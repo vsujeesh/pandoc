@@ -17,13 +17,13 @@ import Prelude
 import Control.Monad.State.Strict
 import Data.Char (isSpace)
 import Data.List (intercalate)
-import Data.Text (Text, pack)
+import Data.Text (Text, unpack, pack)
 import Text.Pandoc.Class (PandocMonad, report)
 import Text.Pandoc.Definition
 import Text.Pandoc.ImageSize
 import Text.Pandoc.Logging
 import Text.Pandoc.Options
-import Text.Pandoc.Pretty (render)
+import Text.DocLayout (render)
 import Text.Pandoc.Shared
 import Text.Pandoc.Templates (renderTemplate)
 import Text.Pandoc.Writers.Shared
@@ -105,7 +105,7 @@ blockToTextile opts (Div attr bs) = do
   let startTag = render Nothing $ tagWithAttrs "div" attr
   let endTag = "</div>"
   contents <- blockListToTextile opts bs
-  return $ startTag ++ "\n\n" ++ contents ++ "\n\n" ++ endTag ++ "\n"
+  return $ unpack startTag ++ "\n\n" ++ contents ++ "\n\n" ++ endTag ++ "\n"
 
 blockToTextile opts (Plain inlines) =
   inlineListToTextile opts inlines

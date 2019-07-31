@@ -39,7 +39,7 @@ import Text.Pandoc.Highlighting (formatLaTeXBlock, formatLaTeXInline, highlight,
 import Text.Pandoc.ImageSize
 import Text.Pandoc.Logging
 import Text.Pandoc.Options
-import Text.Pandoc.Pretty
+import Text.DocLayout
 import Text.Pandoc.Shared
 import Text.Pandoc.Slides
 import Text.Pandoc.Templates
@@ -997,7 +997,7 @@ sectionHeader unnumbered ident level lst = do
                  then return empty
                  else
                    return $ brackets txtNoNotes
-  let contents = if render Nothing txt == plain
+  let contents = if render Nothing txt == T.pack plain
                     then braces txt
                     else braces (text "\\texorpdfstring"
                          <> braces txt

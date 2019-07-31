@@ -15,6 +15,7 @@ Conversion of 'Pandoc' documents to Docbook XML.
 module Text.Pandoc.Writers.Docbook ( writeDocbook4, writeDocbook5 ) where
 import Prelude
 import Control.Monad.Reader
+import qualified Data.Text as T
 import Data.Char (toLower)
 import Data.Generics (everywhere, mkT)
 import Data.List (isPrefixOf, stripPrefix)
@@ -27,7 +28,7 @@ import Text.Pandoc.Highlighting (languages, languagesByExtension)
 import Text.Pandoc.ImageSize
 import Text.Pandoc.Logging
 import Text.Pandoc.Options
-import Text.Pandoc.Pretty
+import Text.DocLayout
 import Text.Pandoc.Shared
 import Text.Pandoc.Templates (renderTemplate)
 import Text.Pandoc.Walk
@@ -45,11 +46,11 @@ type DB = ReaderT DocBookVersion
 -- | Convert list of authors to a docbook <author> section
 authorToDocbook :: PandocMonad m => WriterOptions -> [Inline] -> DB m B.Inlines
 authorToDocbook opts name' = do
-  name <- render Nothing <$> inlinesToDocbook opts name'
+  name <- T.unpack . render Nothing <$> inlinesToDocbook opts name'
   let colwidth = if writerWrapText opts == WrapAuto
                     then Just $ writerColumns opts
                     else Nothing
-  return $ B.rawInline "docbook" $ render colwidth $
+  return $ B.rawInline "docbook" $ T.unpack . render colwidth $
       if ',' `elem` name
          then -- last name first
               let (lastname, rest) = break (==',') name

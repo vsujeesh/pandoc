@@ -27,7 +27,7 @@ import qualified Data.Map as Map
 import Data.Maybe (fromMaybe, isJust, catMaybes)
 import Text.Pandoc.Class (PandocMonad)
 import Text.Pandoc.Definition
-import Text.Pandoc.Pretty
+import Text.DocLayout
 import Text.Printf (printf)
 import Text.Pandoc.RoffChar (standardEscapes,
                               characterCodes, combiningAccents)

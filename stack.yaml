@@ -10,6 +10,7 @@ flags:
     debug: false
 packages:
 - '.'
+- '../doclayout'
 extra-deps:
 - pandoc-citeproc-0.16.2
 - ipynb-0.1

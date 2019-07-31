@@ -25,7 +25,7 @@ import Data.Char (isAscii, isSpace, ord)
 import Data.Text (Text)
 import qualified Data.Text as T
 import Text.HTML.TagSoup.Entity (lookupEntity, htmlEntities)
-import Text.Pandoc.Pretty
+import Text.DocLayout
 import qualified Data.Map as M
 
 -- | Escape one character as needed for XML.

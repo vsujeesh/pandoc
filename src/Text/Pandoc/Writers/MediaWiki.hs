@@ -18,13 +18,13 @@ import Control.Monad.Reader
 import Control.Monad.State.Strict
 import Data.List (intercalate)
 import qualified Data.Set as Set
-import Data.Text (Text, pack)
+import Data.Text (Text, pack, unpack)
 import Text.Pandoc.Class (PandocMonad, report)
 import Text.Pandoc.Definition
 import Text.Pandoc.ImageSize
 import Text.Pandoc.Logging
 import Text.Pandoc.Options
-import Text.Pandoc.Pretty (render)
+import Text.DocLayout (render)
 import Text.Pandoc.Shared
 import Text.Pandoc.Templates (renderTemplate)
 import Text.Pandoc.Writers.Shared
@@ -84,7 +84,7 @@ blockToMediaWiki Null = return ""
 
 blockToMediaWiki (Div attrs bs) = do
   contents <- blockListToMediaWiki bs
-  return $ render Nothing (tagWithAttrs "div" attrs) ++ "\n\n" ++
+  return $ unpack (render Nothing (tagWithAttrs "div" attrs)) ++ "\n\n" ++
                      contents ++ "\n\n" ++ "</div>"
 
 blockToMediaWiki (Plain inlines) =
@@ -351,7 +351,8 @@ inlineToMediaWiki :: PandocMonad m => Inline -> MediaWikiWriter m String
 
 inlineToMediaWiki (Span attrs ils) = do
   contents <- inlineListToMediaWiki ils
-  return $ render Nothing (tagWithAttrs "span" attrs) ++ contents ++ "</span>"
+  return $ unpack (render Nothing (tagWithAttrs "span" attrs)) ++
+             contents ++ "</span>"
 
 inlineToMediaWiki (Emph lst) = do
   contents <- inlineListToMediaWiki lst

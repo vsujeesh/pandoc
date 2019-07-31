@@ -20,13 +20,14 @@ import Data.Char (isSpace, toLower)
 import Data.List (isPrefixOf, stripPrefix, transpose)
 import Data.Maybe (fromMaybe)
 import Data.Text (Text, stripEnd)
+import qualified Data.Text as T
 import qualified Text.Pandoc.Builder as B
 import Text.Pandoc.Class (PandocMonad, report)
 import Text.Pandoc.Definition
 import Text.Pandoc.ImageSize
 import Text.Pandoc.Logging
 import Text.Pandoc.Options
-import Text.Pandoc.Pretty
+import Text.DocLayout
 import Text.Pandoc.Shared
 import Text.Pandoc.Templates (renderTemplate)
 import Text.Pandoc.Writers.Shared
@@ -85,7 +86,7 @@ pandocToRST (Pandoc meta blocks) = do
               $ defField "toc-depth" (show $ writerTOCDepth opts)
               $ defField "number-sections" (writerNumberSections opts)
               $ defField "math" hasMath
-              $ defField "titleblock" (render Nothing title :: String)
+              $ defField "titleblock" (render Nothing title)
               $ defField "math" hasMath
               $ defField "rawtex" rawTeX metadata
   return $
@@ -109,7 +110,7 @@ refsToRST refs = mapM keyToRST refs >>= return . vcat
 keyToRST :: PandocMonad m => ([Inline], (String, String)) -> RST m Doc
 keyToRST (label, (src, _)) = do
   label' <- inlineListToRST label
-  let label'' = if ':' `elem` (render Nothing label' :: String)
+  let label'' = if T.any (== ':') (render Nothing label')
                    then char '`' <> label' <> char '`'
                    else label'
   return $ nowrap $ ".. _" <> label'' <> ": " <> text src

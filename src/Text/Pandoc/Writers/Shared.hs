@@ -51,7 +51,7 @@ import qualified Data.Traversable as Traversable
 import qualified Text.Pandoc.Builder as Builder
 import Text.Pandoc.Definition
 import Text.Pandoc.Options
-import Text.Pandoc.Pretty
+import Text.DocLayout
 import Text.Pandoc.Shared (stringify, hierarchicalize, Element(..), deNote,
                             safeRead)
 import Text.Pandoc.Walk (walk)

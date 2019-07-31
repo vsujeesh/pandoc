@@ -21,6 +21,7 @@ import Data.List (maximumBy, transpose)
 import Data.Ord (comparing)
 import qualified Data.Set as Set
 import Data.Text (Text)
+import qualified Data.Text as T
 import Network.URI (unEscapeString)
 import System.FilePath
 import Text.Pandoc.Class (PandocMonad, report)
@@ -29,7 +30,7 @@ import Text.Pandoc.Error
 import Text.Pandoc.ImageSize
 import Text.Pandoc.Logging
 import Text.Pandoc.Options
-import Text.Pandoc.Pretty
+import Text.DocLayout
 import Text.Pandoc.Shared
 import Text.Pandoc.Templates (renderTemplate)
 import Text.Pandoc.Writers.Shared
@@ -243,7 +244,8 @@ blockToTexinfo (Table caption aligns widths heads rows) = do
        then do -- use longest entry instead of column widths
             cols <- mapM (mapM (liftM (render Nothing . hcat) . mapM blockToTexinfo)) $
                         transpose $ heads : rows
-            return $ concatMap ((\x -> "{"++x++"} ") .  maximumBy (comparing length)) cols
+            return $ concatMap ((\x -> "{"++ T.unpack x ++"} ") .
+                        maximumBy (comparing T.length)) cols
        else return $ "@columnfractions " ++ concatMap (printf "%.2f ") widths
   let tableBody = text ("@multitable " ++ colDescriptors) $$
                   headers $$

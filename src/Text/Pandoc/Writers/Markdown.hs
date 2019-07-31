@@ -41,7 +41,7 @@ import Text.Pandoc.Definition
 import Text.Pandoc.Logging
 import Text.Pandoc.Options
 import Text.Pandoc.Parsing hiding (blankline, blanklines, char, space)
-import Text.Pandoc.Pretty
+import Text.DocLayout
 import Text.Pandoc.Shared
 import Text.Pandoc.Templates (renderTemplate)
 import Text.Pandoc.Walk
@@ -417,7 +417,7 @@ blockToMarkdown' opts (Plain inlines) = do
   let colwidth = if writerWrapText opts == WrapAuto
                     then Just $ writerColumns opts
                     else Nothing
-  let rendered = render colwidth contents
+  let rendered = T.unpack $ render colwidth contents
   let escapeMarker (x:xs) | x `elem` (".()" :: String) = '\\':x:xs
                           | otherwise                  = x : escapeMarker xs
       escapeMarker []                                  = []
@@ -860,7 +860,7 @@ blockListToMarkdown opts blocks = do
   mapM (blockToMarkdown opts) (fixBlocks blocks) >>= return . cat
 
 getKey :: Doc -> Key
-getKey = toKey . render Nothing
+getKey = toKey . T.unpack . render Nothing
 
 findUsableIndex :: [String] -> Int -> Int
 findUsableIndex lbls i = if (show i) `elem` lbls
@@ -891,7 +891,8 @@ getReference attr label target = do
                                  i <- getNextIndex
                                  modify $ \s -> s{ stLastIdx = i }
                                  return (show i, i)
-                               else return (render Nothing label, 0)
+                               else
+                                 return (T.unpack (render Nothing label), 0)
              modify (\s -> s{
                stRefs = (lab', target, attr) : refs,
                stKeys = M.insert (getKey label)
@@ -902,7 +903,7 @@ getReference attr label target = do
            Just km -> do -- we have refs with this label
              case M.lookup (target, attr) km of
                   Just i -> do
-                    let lab' = render Nothing $
+                    let lab' = T.unpack $ render Nothing $
                                label <> if i == 0
                                            then mempty
                                            else text (show i)
@@ -1048,10 +1049,10 @@ inlineToMarkdown opts (Superscript lst) =
                 else if isEnabled Ext_raw_html opts
                          then "<sup>" <> contents <> "</sup>"
                          else
-                           let rendered = render Nothing contents
+                           let rendered = T.unpack $ render Nothing contents
                            in  case mapM toSuperscript rendered of
                                     Just r  -> text r
-                                    Nothing -> text $ "^(" ++ rendered ++ ")"
+                                    Nothing -> "^(" <> text rendered <> ")"
 inlineToMarkdown _ (Subscript []) = return empty
 inlineToMarkdown opts (Subscript lst) =
   local (\env -> env {envEscapeSpaces = True}) $ do
@@ -1061,10 +1062,10 @@ inlineToMarkdown opts (Subscript lst) =
                 else if isEnabled Ext_raw_html opts
                          then "<sub>" <> contents <> "</sub>"
                          else
-                           let rendered = render Nothing contents
+                           let rendered = T.unpack $ render Nothing contents
                            in  case mapM toSubscript rendered of
                                     Just r  -> text r
-                                    Nothing -> text $ "_(" ++ rendered ++ ")"
+                                    Nothing -> "_(" <> text rendered <> ")"
 inlineToMarkdown opts (SmallCaps lst) = do
   plain <- asks envPlain
   if not plain &&

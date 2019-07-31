@@ -31,7 +31,7 @@ import Text.Pandoc.Logging
 import Text.Pandoc.MIME (getMimeType)
 import Text.Pandoc.Walk (walk)
 import Text.Pandoc.Options
-import Text.Pandoc.Pretty
+import Text.DocLayout
 import Text.Pandoc.Shared
 import Text.Pandoc.Templates (renderTemplate)
 import Text.Pandoc.Writers.Math

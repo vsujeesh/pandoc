@@ -22,6 +22,8 @@ import Data.List (isPrefixOf, intercalate)
 import Data.Maybe (fromMaybe)
 import qualified Data.Map as Map
 import qualified Data.Text.Lazy as TL
+import qualified Data.Text.Encoding as TE
+import qualified Data.Text as T
 import Data.Time
 import System.FilePath (takeDirectory, takeExtension, (<.>))
 import Text.Pandoc.BCP47 (Lang (..), getLang, renderLang)
@@ -32,7 +34,7 @@ import Text.Pandoc.ImageSize
 import Text.Pandoc.Logging
 import Text.Pandoc.MIME (extensionFromMimeType, getMimeType)
 import Text.Pandoc.Options (WrapOption (..), WriterOptions (..))
-import Text.Pandoc.Pretty
+import Text.DocLayout
 import Text.Pandoc.Shared (stringify, pandocVersion)
 import Text.Pandoc.Writers.Shared (lookupMetaString, lookupMetaBlocks,
                                    fixDisplayMath)
@@ -97,7 +99,7 @@ pandocToODT opts doc@(Pandoc meta _) = do
   let formulas = [ takeDirectory ent ++ "/" | ent <- filesInArchive archive,
                       "Formula-" `isPrefixOf` ent, takeExtension ent == ".xml" ]
   let manifestEntry = toEntry "META-INF/manifest.xml" epochtime
-        $ fromStringLazy $ render Nothing
+        $ B.fromStrict $ TE.encodeUtf8 $ render Nothing
         $ text "<?xml version=\"1.0\" encoding=\"utf-8\"?>"
         $$
          (inTags True "manifest:manifest"
@@ -125,7 +127,7 @@ pandocToODT opts doc@(Pandoc meta _) = do
               ] (escapedText $ lookupMetaString k meta)) userDefinedMetaFields
   let metaTag metafield = inTagsSimple metafield . escapedText
   let metaEntry = toEntry "meta.xml" epochtime
-       $ fromStringLazy $ render Nothing
+       $ B.fromStrict $ TE.encodeUtf8 $ render Nothing
        $ text "<?xml version=\"1.0\" encoding=\"utf-8\"?>"
        $$
         (inTags True "office:document-meta"
@@ -247,7 +249,8 @@ transformPicMath _ (Math t math) = do
          let fname' = dirname ++ "settings.xml"
          let entry' = toEntry fname' epochtime $ documentSettings (t == InlineMath)
          modify $ \st -> st{ stEntries = entry' : (entry : entries) }
-         return $ RawInline (Format "opendocument") $ render Nothing $
+         return $ RawInline (Format "opendocument") $ T.unpack $
+           render Nothing $
            inTags False "draw:frame" (if t == DisplayMath
                                       then [("draw:style-name","fr2")
                                            -- `draw:frame` does not support either
@@ -265,7 +268,7 @@ transformPicMath _ (Math t math) = do
 transformPicMath _ x = return x
 
 documentSettings :: Bool -> B.ByteString
-documentSettings isTextMode = fromStringLazy $ render Nothing
+documentSettings isTextMode = B.fromStrict $ TE.encodeUtf8 $ render Nothing
     $ text "<?xml version=\"1.0\" encoding=\"utf-8\"?>"
     $$
     (inTags True "office:document-settings"

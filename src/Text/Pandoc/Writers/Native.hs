@@ -19,7 +19,7 @@ import Data.Text (Text)
 import Text.Pandoc.Class (PandocMonad)
 import Text.Pandoc.Definition
 import Text.Pandoc.Options (WrapOption (..), WriterOptions (..))
-import Text.Pandoc.Pretty
+import Text.DocLayout
 
 prettyList :: [Doc] -> Doc
 prettyList ds =
