@@ -86,7 +86,7 @@ pandocToRST (Pandoc meta blocks) = do
               $ defField "toc-depth" (show $ writerTOCDepth opts)
               $ defField "number-sections" (writerNumberSections opts)
               $ defField "math" hasMath
-              $ defField "titleblock" (render Nothing title)
+              $ defField "titleblock" (render Nothing title :: String)
               $ defField "math" hasMath
               $ defField "rawtex" rawTeX metadata
   return $
@@ -110,7 +110,7 @@ refsToRST refs = mapM keyToRST refs >>= return . vcat
 keyToRST :: PandocMonad m => ([Inline], (String, String)) -> RST m Doc
 keyToRST (label, (src, _)) = do
   label' <- inlineListToRST label
-  let label'' = if T.any (== ':') (render Nothing label')
+  let label'' = if T.any (== ':') (render Nothing label' :: Text)
                    then char '`' <> label' <> char '`'
                    else label'
   return $ nowrap $ ".. _" <> label'' <> ": " <> text src
