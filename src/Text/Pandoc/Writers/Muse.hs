@@ -201,7 +201,7 @@ blockToMuse (BlockQuote blocks) = do
   contents <- flatBlockListToMuse blocks
   return $ blankline
         <> "<quote>"
-        $$ nest 0 contents -- nest 0 to remove trailing blank lines
+        $$ chomp contents
         $$ "</quote>"
         <> blankline
 blockToMuse (OrderedList (start, style, _) items) = do
