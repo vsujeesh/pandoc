@@ -214,8 +214,13 @@ blockToMuse (OrderedList (start, style, _) items) = do
                               => String   -- ^ marker for list item
                               -> [Block]  -- ^ list item (list of blocks)
                               -> Muse m Doc
-        orderedListItemToMuse marker item = hang (length marker + 1) (text marker <> space)
-          <$> blockListToMuse item
+        orderedListItemToMuse marker item =
+          -- remove trailing blank line if item ends with a tight list
+          let maybechomp = if itemEndsWithTightList item
+                              then chomp
+                              else id
+          in  hang (length marker + 1) (text marker <> space) . maybechomp
+                 <$> blockListToMuse item
 blockToMuse (BulletList items) = do
   contents <- mapM bulletListItemToMuse items
   topLevel <- asks envTopLevel
@@ -225,7 +230,11 @@ blockToMuse (BulletList items) = do
                              -> Muse m Doc
         bulletListItemToMuse item = do
           modify $ \st -> st { stUseTags = False }
-          hang 2 "- " <$> blockListToMuse item
+          -- remove trailing blank line if item ends with a tight list
+          let maybechomp = if itemEndsWithTightList item
+                              then chomp
+                              else id
+          hang 2 "- " . maybechomp <$> blockListToMuse item
 blockToMuse (DefinitionList items) = do
   contents <- mapM definitionListItemToMuse items
   topLevel <- asks envTopLevel
