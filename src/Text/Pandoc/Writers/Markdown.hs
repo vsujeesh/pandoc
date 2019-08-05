@@ -739,13 +739,6 @@ pandocTable opts multiline headless aligns widths rawHeaders rawRows = do
                   else border
   return $ head'' $$ underline $$ body $$ bottom
 
-itemEndsWithTightList :: [Block] -> Bool
-itemEndsWithTightList bs =
-  case bs of
-        [Plain _, BulletList xs]    -> isTightList xs
-        [Plain _, OrderedList _ xs] -> isTightList xs
-        _                           -> False
-
 -- | Convert bullet list item (list of blocks) to markdown.
 bulletListItemToMarkdown :: PandocMonad m => WriterOptions -> [Block] -> MD m Doc
 bulletListItemToMarkdown opts bs = do
@@ -755,7 +748,7 @@ bulletListItemToMarkdown opts bs = do
   let start = text ('-' : ' ' : sps)
   -- remove trailing blank line if item ends with a tight list
   let contents' = if itemEndsWithTightList bs
-                     then chomp contents <> cr
+                     then chomp contents
                      else contents
   return $ hang (writerTabStop opts) start $ contents' <> cr
 

@@ -61,6 +61,7 @@ module Text.Pandoc.Shared (
                      stripEmptyParagraphs,
                      onlySimpleTableCells,
                      isTightList,
+                     itemEndsWithTightList,
                      taskListItemFromAscii,
                      taskListItemToAscii,
                      addMetaField,
@@ -130,6 +131,7 @@ import Text.Pandoc.Extensions (Extensions, Extension(..), extensionEnabled)
 import Text.Pandoc.Generic (bottomUp)
 import Text.DocLayout (charWidth)
 import Text.Pandoc.Walk
+import Safe (lastMay)
 
 -- | Version number of pandoc library.
 pandocVersion :: String
@@ -591,6 +593,14 @@ isTightList :: [[Block]] -> Bool
 isTightList = all firstIsPlain
   where firstIsPlain (Plain _ : _) = True
         firstIsPlain _             = False
+
+-- | Detect if a list item ends with a tight list.
+itemEndsWithTightList :: [Block] -> Bool
+itemEndsWithTightList bs =
+  case lastMay bs of
+    Just (BulletList xs)    -> isTightList xs
+    Just (OrderedList _ xs) -> isTightList xs
+    _                       -> False
 
 -- | Convert a list item containing tasklist syntax (e.g. @[x]@)
 -- to using @U+2610 BALLOT BOX@ or @U+2612 BALLOT BOX WITH X@.
