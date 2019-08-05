@@ -464,7 +464,7 @@ blockToMarkdown' opts b@(RawBlock f str) = do
   let rawAttribBlock = return $
          (text "```{=" <> text fmt <> "}") $$
          text str $$
-         (text "```" <> text "\n")
+         (text "```" <> cr)
   let renderEmpty = mempty <$ report (BlockNotRendered b)
   case () of
     _ | plain -> renderEmpty
