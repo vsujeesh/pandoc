@@ -128,7 +128,7 @@ catWithBlankLines :: PandocMonad m
 catWithBlankLines (b : bs) n = do
   b' <- blockToMuseWithNotes b
   bs' <- flatBlockListToMuse bs
-  return $ b' <> blanklines n <> bs'
+  return $ b' <> (if n > 0 then blanklines n else cr) <> bs'
 catWithBlankLines _ _ = error "Expected at least one block"
 
 -- | Convert list of Pandoc block elements to Muse
