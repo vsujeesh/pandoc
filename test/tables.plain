@@ -30,7 +30,7 @@ Multiline table with caption:
 
   --------------------------------------------------------------
    Centered   Left              Right Default aligned
-    Header    Aligned         Aligned 
+    Header    Aligned         Aligned
   ----------- ---------- ------------ --------------------------
      First    row                12.0 Example of a row that
                                       spans multiple lines.
@@ -46,7 +46,7 @@ Multiline table without caption:
 
   --------------------------------------------------------------
    Centered   Left              Right Default aligned
-    Header    Aligned         Aligned 
+    Header    Aligned         Aligned
   ----------- ---------- ------------ --------------------------
      First    row                12.0 Example of a row that
                                       spans multiple lines.
