@@ -159,7 +159,9 @@ simpleTable caption headers rows = do
   headers' <- mapM blockListToMuse headers
   rows' <- mapM (mapM blockListToMuse) rows
   let widthsInChars = maximum . map offset <$> transpose (headers' : rows')
-  let hpipeBlocks sep = hcat . intersperse (vfill sep)
+  let sepBlock sep h = cblock 3 $ vcat (replicate h (text sep))
+  let hpipeBlocks sep bs = hcat $ intersperse (sepBlock sep h) bs
+        where h = maximum (1:map height bs)
   let makeRow sep = hpipeBlocks sep . zipWith lblock widthsInChars . map chomp
   let head' = makeRow " || " headers'
   rows'' <- mapM (\row -> makeRow rowSeparator <$> mapM blockListToMuse row) rows

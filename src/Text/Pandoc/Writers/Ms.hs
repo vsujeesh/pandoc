@@ -382,7 +382,7 @@ inlineToMs opts (Code attr str) = do
   withFontFeature 'C' (return hlCode)
 inlineToMs opts (Str str) = do
   let shim = case str of
-                  '.':_ -> afterBreak "\\&"
+                  '.':_ -> afterBreak (text "\\&")
                   _     -> empty
   smallcaps <- gets stSmallCaps
   if smallcaps

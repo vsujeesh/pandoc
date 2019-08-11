@@ -125,8 +125,8 @@ notesToRST notes =
 noteToRST :: PandocMonad m => Int -> [Block] -> RST m Doc
 noteToRST num note = do
   contents <- blockListToRST note
-  let marker = ".. [" <> text (show num) <> "]"
-  return $ nowrap $ marker $$ nest 3 contents
+  let marker = nowrap $ ".. [" <> text (show num) <> "]"
+  return $ marker $$ nest 3 contents
 
 -- | Return RST representation of picture reference table.
 pictRefsToRST :: PandocMonad m
