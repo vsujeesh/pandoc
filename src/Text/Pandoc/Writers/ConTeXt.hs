@@ -297,15 +297,15 @@ tableColToConTeXt tabl (align, width, blocks) = do
   let halign = alignToConTeXt align
   let options = (if isEmpty keys
                  then empty
-                 else brackets keys) <> space
+                 else brackets keys)
         where keys = hcat $ intersperse "," $ filter (not . isEmpty) [halign, colwidth]
   tableCellToConTeXt tabl options cellContents
 
 tableCellToConTeXt :: PandocMonad m => Tabl -> Doc -> Doc -> WM m Doc
 tableCellToConTeXt Xtb options cellContents =
-  return $ "\\startxcell" <> options <> cellContents <> " \\stopxcell"
+  return $ "\\startxcell" <> options <+> cellContents <+> "\\stopxcell"
 tableCellToConTeXt Ntb options cellContents =
-  return $ "\\NC" <> options <> cellContents
+  return $ "\\NC" <> options <+> cellContents
 
 alignToConTeXt :: Alignment -> Doc
 alignToConTeXt align = case align of
@@ -350,10 +350,10 @@ inlineToConTeXt :: PandocMonad m
                 -> WM m Doc
 inlineToConTeXt (Emph lst) = do
   contents <- inlineListToConTeXt lst
-  return $ braces $ "\\em " <> contents
+  return $ braces $ "\\em" <+> contents
 inlineToConTeXt (Strong lst) = do
   contents <- inlineListToConTeXt lst
-  return $ braces $ "\\bf " <> contents
+  return $ braces $ "\\bf" <+> contents
 inlineToConTeXt (Strikeout lst) = do
   contents <- inlineListToConTeXt lst
   return $ "\\overstrikes" <> braces contents
@@ -365,7 +365,7 @@ inlineToConTeXt (Subscript lst) = do
   return $ "\\low" <> braces contents
 inlineToConTeXt (SmallCaps lst) = do
   contents <- inlineListToConTeXt lst
-  return $ braces $ "\\sc " <> contents
+  return $ braces $ "\\sc" <+> contents
 inlineToConTeXt (Code _ str) | not ('{' `elem` str || '}' `elem` str) =
   return $ "\\type" <> braces (text str)
 inlineToConTeXt (Code _ str) = do
@@ -384,7 +384,7 @@ inlineToConTeXt (Str str) = do
 inlineToConTeXt (Math InlineMath str) =
   return $ char '$' <> text str <> char '$'
 inlineToConTeXt (Math DisplayMath str) =
-  return $ text "\\startformula "  <> text str <> text " \\stopformula" <> space
+  return $ text "\\startformula"  <+> text str <+> text "\\stopformula" <> space
 inlineToConTeXt il@(RawInline f str)
   | f == Format "tex" || f == Format "context" = return $ text str
   | otherwise = empty <$ report (InlineNotRendered il)
@@ -455,13 +455,13 @@ inlineToConTeXt (Note contents) = do
   let codeBlocks = query codeBlock contents
   return $ if null codeBlocks
               then text "\\footnote{" <> nest 2 contents' <> char '}'
-              else text "\\startbuffer " <> nest 2 contents' <>
+              else text "\\startbuffer" <+> nest 2 contents' <>
                    text "\\stopbuffer\\footnote{\\getbuffer}"
 inlineToConTeXt (Span (_,_,kvs) ils) = do
   mblang <- fromBCP47 (lookup "lang" kvs)
   let wrapDir txt = case lookup "dir" kvs of
-                      Just "rtl" -> braces $ "\\righttoleft " <> txt
-                      Just "ltr" -> braces $ "\\lefttoright " <> txt
+                      Just "rtl" -> braces $ "\\righttoleft" <+> txt
+                      Just "ltr" -> braces $ "\\lefttoright" <+> txt
                       _          -> txt
       wrapLang txt = case mblang of
                        Just lng -> "\\start\\language[" <> text lng
