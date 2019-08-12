@@ -129,7 +129,7 @@ blockToHaddock opts (Table caption aligns widths headers rows) = do
   return $ prefixed "> " (tbl $$ blankline $$ caption'') $$ blankline
 blockToHaddock opts (BulletList items) = do
   contents <- mapM (bulletListItemToHaddock opts) items
-  return $ cat contents <> blankline
+  return $ vcat contents <> blankline
 blockToHaddock opts (OrderedList (start,_,delim) items) = do
   let attribs = (start, Decimal, delim)
   let markers  = orderedListMarkers attribs
@@ -137,10 +137,10 @@ blockToHaddock opts (OrderedList (start,_,delim) items) = do
                                then m ++ replicate (3 - length m) ' '
                                else m) markers
   contents <- zipWithM (orderedListItemToHaddock opts) markers' items
-  return $ cat contents <> blankline
+  return $ vcat contents <> blankline
 blockToHaddock opts (DefinitionList items) = do
   contents <- mapM (definitionListItemToHaddock opts) items
-  return $ cat contents <> blankline
+  return $ vcat contents <> blankline
 
 -- | Convert bullet list item (list of blocks) to haddock
 bulletListItemToHaddock :: PandocMonad m
@@ -189,7 +189,7 @@ blockListToHaddock :: PandocMonad m
                    -> [Block]       -- ^ List of block elements
                    -> StateT WriterState m Doc
 blockListToHaddock opts blocks =
-  cat <$> mapM (blockToHaddock opts) blocks
+  vcat <$> mapM (blockToHaddock opts) blocks
 
 -- | Convert list of Pandoc inline elements to haddock.
 inlineListToHaddock :: PandocMonad m
