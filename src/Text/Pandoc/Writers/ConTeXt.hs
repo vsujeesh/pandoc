@@ -172,7 +172,7 @@ blockToConTeXt (LineBlock lns) = do
   return $ "\\startlines" $$ doclines $$ "\\stoplines" <> blankline
 blockToConTeXt (BlockQuote lst) = do
   contents <- blockListToConTeXt lst
-  return $ "\\startblockquote" $$ nest 0 contents $$ "\\stopblockquote" <> blankline
+  return $ "\\startblockquote" $$ chomp contents $$ "\\stopblockquote" <> blankline
 blockToConTeXt (CodeBlock _ str) =
   return $ flush ("\\starttyping" <> cr <> text str <> cr <> "\\stoptyping") $$ blankline
   -- blankline because \stoptyping can't have anything after it, inc. '}'
@@ -465,7 +465,7 @@ inlineToConTeXt (Span (_,_,kvs) ils) = do
                       _          -> txt
       wrapLang txt = case mblang of
                        Just lng -> "\\start\\language[" <> text lng
-                                      <> "]" <> txt <> "\\stop "
+                                      <> "]" <> txt <> "\\stop" <> space
                        Nothing -> txt
   (wrapLang . wrapDir) <$> inlineListToConTeXt ils
 
@@ -500,7 +500,7 @@ sectionFooter attr hdrLevel = do
   opts <- gets stOptions
   levelText <- sectionLevelToText opts attr hdrLevel
   return $ if writerSectionDivs opts
-           then "\\stop" <> levelText <> blankline
+           then "\\stop " <> levelText <> blankline
            else empty
 
 -- | Generate a textual representation of the section level
