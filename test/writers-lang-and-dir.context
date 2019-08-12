@@ -98,7 +98,7 @@ German div contents
 
 and more text.
 
-Next paragraph with a \start\language[en-gb]British span\stop  and a
+Next paragraph with a \start\language[en-gb]British span\stop and a
 word-that-includesa\start\language[de-ch]Swiss German span\stop right?
 
 Some \start\language[es]Spanish text\stop .
@@ -117,8 +117,7 @@ French rtl div contents
 and more text.
 
 Next paragraph with a \start\language[en-gb]{\lefttoright British ltr
-span}\stop  and a
-word-that-includesa\start\language[de-ch]{\lefttoright Swiss German ltr
-span}\stop right?
+span}\stop and a word-that-includesa\start\language[de-ch]{\lefttoright
+Swiss German ltr span}\stop right?
 
 \stoptext
