@@ -1,4 +1,3 @@
-{-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE CPP             #-}
 {-# LANGUAGE Arrows          #-}
 {-# LANGUAGE RecordWildCards #-}
@@ -39,7 +38,6 @@ module Text.Pandoc.Readers.Odt.StyleReader
 , readStylesAt
 ) where
 
-import Prelude
 import Control.Applicative hiding (liftA, liftA2, liftA3)
 import Control.Arrow
 
@@ -120,7 +118,7 @@ fontPitchReader = executeInSub NsOffice "font-face-decls" (
                               lookupDefaultingAttr NsStyle "font-pitch"
                             ))
                     >>?^ ( M.fromList . foldl accumLegalPitches [] )
-                  ) `ifFailedDo` (returnV (Right M.empty))
+                  ) `ifFailedDo` returnV (Right M.empty)
   where accumLegalPitches ls (Nothing,_) = ls
         accumLegalPitches ls (Just n,p)  = (n,p):ls
 
@@ -548,11 +546,11 @@ readListLevelStyle :: ListLevelType -> StyleReader _x (Int, ListLevelStyle)
 readListLevelStyle levelType =      readAttr NsText "level"
                                >>?! keepingTheValue
                                     ( liftA5 toListLevelStyle
-                                      ( returnV  levelType              )
-                                      ( findAttr' NsStyle "num-prefix"  )
-                                      ( findAttr' NsStyle "num-suffix"  )
-                                      ( getAttr   NsStyle "num-format"  )
-                                      ( findAttr' NsText  "start-value" )
+                                      ( returnV       levelType             )
+                                      ( findAttr'     NsStyle "num-prefix"  )
+                                      ( findAttr'     NsStyle "num-suffix"  )
+                                      ( getAttr       NsStyle "num-format"  )
+                                      ( findAttrText' NsText  "start-value" )
                                     )
   where
   toListLevelStyle _ p s LinfNone b         = ListLevelStyle LltBullet p s LinfNone (startValue b)

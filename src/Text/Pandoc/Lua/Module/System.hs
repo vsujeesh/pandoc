@@ -1,6 +1,6 @@
 {- |
    Module      : Text.Pandoc.Lua.Module.System
-   Copyright   : © 2019 Albert Krewinkel
+   Copyright   : © 2019-2020 Albert Krewinkel
    License     : GNU GPL, version 2 or above
 
    Maintainer  : Albert Krewinkel <tarleb+pandoc@moltkeplatz.de>
@@ -12,7 +12,6 @@ module Text.Pandoc.Lua.Module.System
   ( pushModule
   ) where
 
-import Prelude
 import Foreign.Lua (Lua, NumResults)
 import Foreign.Lua.Module.System (arch, env, getwd, os,
                                   with_env, with_tmpdir, with_wd)

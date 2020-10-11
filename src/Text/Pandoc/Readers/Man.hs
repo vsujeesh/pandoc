@@ -1,7 +1,9 @@
-{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleContexts  #-}
+{-# LANGUAGE ViewPatterns      #-}
+{-# LANGUAGE OverloadedStrings #-}
 {- |
    Module      : Text.Pandoc.Readers.Man
-   Copyright   : Copyright (C) 2018-2019 Yan Pashkovsky and John MacFarlane
+   Copyright   : Copyright (C) 2018-2020 Yan Pashkovsky and John MacFarlane
    License     : GNU GPL, version 2 or above
 
    Maintainer  : Yan Pashkovsky <yanp.bugz@gmail.com>
@@ -12,17 +14,16 @@ Conversion of man to 'Pandoc' document.
 -}
 module Text.Pandoc.Readers.Man (readMan) where
 
-import Prelude
 import Data.Char (toLower)
 import Data.Default (Default)
 import Control.Monad (liftM, mzero, guard, void)
 import Control.Monad.Trans (lift)
 import Control.Monad.Except (throwError)
-import Text.Pandoc.Class (PandocMonad(..), report)
 import Data.Maybe (catMaybes, isJust)
 import Data.List (intersperse, intercalate)
 import qualified Data.Text as T
 import Text.Pandoc.Builder as B
+import Text.Pandoc.Class.PandocMonad (PandocMonad(..), report)
 import Text.Pandoc.Error (PandocError (PandocParsecError))
 import Text.Pandoc.Logging (LogMessage(..))
 import Text.Pandoc.Options
@@ -32,7 +33,7 @@ import Text.Pandoc.Shared (crFilter, mapLeft)
 import Text.Pandoc.Readers.Roff  -- TODO explicit imports
 import Text.Parsec hiding (tokenPrim)
 import qualified Text.Parsec as Parsec
-import Text.Parsec.Pos (updatePosString, initialPos)
+import Text.Parsec.Pos (updatePosString)
 import qualified Data.Foldable as Foldable
 
 data ManState = ManState { readerOptions   :: ReaderOptions
@@ -63,7 +64,7 @@ readWithMTokens :: PandocMonad m
         -> [RoffToken]                       -- ^ input
         -> m (Either PandocError a)
 readWithMTokens parser state input =
-  let leftF = PandocParsecError . intercalate "\n" $ show <$> input
+  let leftF = PandocParsecError . T.pack . intercalate "\n" $ show <$> input
   in mapLeft leftF `liftM` runParserT parser state "source" input
 
 parseMan :: PandocMonad m => ManParser m Pandoc
@@ -89,8 +90,8 @@ parseBlock = choice [ parseList
 parseTable :: PandocMonad m => ManParser m Blocks
 parseTable = do
   modifyState $ \st -> st { tableCellsPlain = True }
-  let isTbl (Tbl{}) = True
-      isTbl _          = False
+  let isTbl Tbl{} = True
+      isTbl _     = False
   Tbl _opts rows pos <- msatisfy isTbl
   case rows of
     ((as,_):_) -> try (do
@@ -106,11 +107,12 @@ parseTable = do
       bodyRows <- mapM (mapM parseTableCell . snd) bodyRows'
       isPlainTable <- tableCellsPlain <$> getState
       let widths = if isPlainTable
-                      then repeat 0.0
-                      else repeat ((1.0 / fromIntegral (length alignments))
-                                   :: Double)
-      return $ B.table mempty (zip alignments widths)
-                  headerRow bodyRows) <|> fallback pos
+                      then repeat ColWidthDefault
+                      else repeat $ ColWidth (1.0 / fromIntegral (length alignments))
+      return $ B.table B.emptyCaption (zip alignments widths)
+                  (TableHead nullAttr $ toHeaderRow headerRow)
+                  [TableBody nullAttr 0 [] $ map toRow bodyRows]
+                  (TableFoot nullAttr [])) <|> fallback pos
     [] -> fallback pos
 
  where
@@ -131,7 +133,7 @@ parseTable = do
       Left _  -> do
         res' <- lift $ readWithMTokens blockstcell st ts'
         case res' of
-          Left _  -> fail "Could not parse table cell"
+          Left _  -> Prelude.fail "Could not parse table cell"
           Right x -> do
             modifyState $ \s -> s{ tableCellsPlain = False }
             return x
@@ -141,7 +143,7 @@ parseTable = do
   isHrule ([cellfmt], _) = columnType cellfmt `elem` ['_','-','=']
   isHrule (_, [RoffTokens ss]) =
     case Foldable.toList ss of
-      [TextLine [RoffStr [c]]] -> c `elem` ['_','-','=']
+      [TextLine [RoffStr (T.unpack -> [c])]] -> c `elem` ['_','-','=']
       _                     -> False
   isHrule _ = False
 
@@ -159,6 +161,8 @@ parseTable = do
       'r' -> Just AlignRight
       _   -> Nothing
 
+  toRow = Row nullAttr . map simpleCell
+  toHeaderRow l = [toRow l | not (null l)]
 
 parseNewParagraph :: PandocMonad m => ManParser m Blocks
 parseNewParagraph = do
@@ -191,7 +195,7 @@ memptyLine = msatisfy isEmptyLine where
   isEmptyLine EmptyLine = True
   isEmptyLine _ = False
 
-mmacro :: PandocMonad m => String -> ManParser m RoffToken
+mmacro :: PandocMonad m => T.Text -> ManParser m RoffToken
 mmacro mk = msatisfy isControlLine where
   isControlLine (ControlLine mk' _ _) | mk == mk' = True
                             | otherwise = False
@@ -232,22 +236,22 @@ linePartsToInlines = go False
   go mono (RoffStr s : xs)
     | mono      = code s <> go mono xs
     | otherwise = text s <> go mono xs
-  go mono (Font fs: xs) =
-    if litals > 0 && litals >= lbolds && litals >= lmonos
-       then emph (go mono (Font fs{ fontItalic = False } :
+  go mono (Font fs: xs)
+    | litals > 0 && litals >= lbolds && litals >= lmonos
+       = emph (go mono (Font fs{ fontItalic = False } :
                    map (adjustFontSpec (\s -> s{ fontItalic = False }))
                    itals)) <>
             go mono italsrest
-       else if lbolds > 0 && lbolds >= lmonos
-            then strong (go mono (Font fs{ fontBold = False } :
-                   map (adjustFontSpec (\s -> s{ fontBold = False }))
-                   bolds)) <>
-                 go mono boldsrest
-            else if lmonos > 0
-                 then go True (Font fs{ fontMonospace = False } :
-                    map (adjustFontSpec (\s -> s { fontMonospace = False }))
-                    monos) <> go mono monosrest
-                 else go mono xs
+    | lbolds > 0 && lbolds >= lmonos
+       = strong (go mono (Font fs{ fontBold = False } :
+              map (adjustFontSpec (\s -> s{ fontBold = False }))
+              bolds)) <>
+            go mono boldsrest
+    | lmonos > 0
+       = go True (Font fs{ fontMonospace = False } :
+          map (adjustFontSpec (\s -> s { fontMonospace = False }))
+          monos) <> go mono monosrest
+    | otherwise = go mono xs
     where
       adjustFontSpec f (Font fspec) = Font (f fspec)
       adjustFontSpec _ x            = x
@@ -284,8 +288,8 @@ parseInline = try $ do
     _ -> mzero
 
 handleInlineMacro :: PandocMonad m
-                  => String -> [Arg] -> SourcePos -> ManParser m Inlines
-handleInlineMacro mname args _pos = do
+                  => T.Text -> [Arg] -> SourcePos -> ManParser m Inlines
+handleInlineMacro mname args _pos =
   case mname of
     "UR" -> parseLink args
     "MT" -> parseEmailLink args
@@ -339,7 +343,7 @@ bareIP = msatisfy isBareIP where
   isBareIP (ControlLine "IP" [] _) = True
   isBareIP _                  = False
 
-endmacro :: PandocMonad m => String -> ManParser m ()
+endmacro :: PandocMonad m => T.Text -> ManParser m ()
 endmacro name = void (mmacro name)
              <|> lookAhead (void newBlockMacro)
              <|> lookAhead eof
@@ -356,7 +360,7 @@ parseCodeBlock = try $ do
   toks <- (mmacro "nf" *> manyTill codeline (endmacro "fi"))
       <|> (mmacro "EX" *> manyTill codeline (endmacro "EE"))
   optional (mmacro "in")
-  return $ codeBlock (intercalate "\n" $ catMaybes toks)
+  return $ codeBlock (T.intercalate "\n" $ catMaybes toks)
 
   where
 
@@ -364,9 +368,9 @@ parseCodeBlock = try $ do
     tok <- mtoken
     case tok of
       ControlLine "PP" _ _ -> return $ Just "" -- .PP sometimes used for blank line
-      ControlLine mname args pos -> do
+      ControlLine mname args pos ->
         (Just . query getText <$> handleInlineMacro mname args pos) <|>
-          do report $ SkippedContent ('.':mname) pos
+          do report $ SkippedContent ("." <> mname) pos
              return Nothing
       Tbl _ _ pos     -> do
         report $ SkippedContent "TABLE" pos
@@ -375,12 +379,12 @@ parseCodeBlock = try $ do
       TextLine ss
         | not (null ss)
         , all isFontToken ss -> return Nothing
-        | otherwise -> return $ Just $ linePartsToString ss
+        | otherwise -> return $ Just $ linePartsToText ss
 
   isFontToken Font{}     = True
   isFontToken _            = False
 
-  getText :: Inline -> String
+  getText :: Inline -> T.Text
   getText (Str s)    = s
   getText Space      = " "
   getText (Code _ s) = s
@@ -416,8 +420,8 @@ listItem mbListType = try $ do
   (ControlLine _ args _) <- mmacro "IP"
   case args of
     (arg1 : _)  -> do
-      let cs = linePartsToString arg1
-      let cs' = if not ('.' `elem` cs || ')' `elem` cs) then cs ++ "." else cs
+      let cs = linePartsToText arg1
+      let cs' = if not (T.any (== '.') cs || T.any (== ')') cs) then cs <> "." else cs
       let lt = case Parsec.runParser anyOrderedListMarker defaultParserState
                      "list marker" cs' of
                   Right (start, listtype, listdelim)
@@ -467,7 +471,7 @@ parseLink args = do
   ControlLine _ endargs _ <- mmacro "UE"
   let url = case args of
               [] -> ""
-              (x:_) -> linePartsToString x
+              (x:_) -> linePartsToText x
   return $ link url "" contents <>
     case endargs of
       []    -> mempty
@@ -479,7 +483,7 @@ parseEmailLink args = do
   ControlLine _ endargs _ <- mmacro "ME"
   let url = case args of
               [] -> ""
-              (x:_) -> "mailto:" ++ linePartsToString x
+              (x:_) -> "mailto:" <> linePartsToText x
   return $ link url "" contents <>
     case endargs of
       []    -> mempty
@@ -490,6 +494,6 @@ skipUnknownMacro = do
   tok <- mmacroAny
   case tok of
     ControlLine mkind _ pos -> do
-      report $ SkippedContent ('.':mkind) pos
+      report $ SkippedContent ("." <> mkind) pos
       return mempty
-    _                 -> fail "the impossible happened"
+    _                 -> Prelude.fail "the impossible happened"

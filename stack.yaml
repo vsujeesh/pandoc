@@ -2,28 +2,31 @@ flags:
   pandoc:
     trypandoc: false
     embed_data_files: true
-  pandoc-citeproc:
-    bibutils: true
-    embed_data_files: true
-    unicode_collation: false
-    test_citeproc: false
-    debug: false
+    static: false
 packages:
 - '.'
 extra-deps:
-# - pandoc-citeproc-0.16.2
-- git: https://github.com/jgm/pandoc-citeproc
-  commit: 63498fb22ae6f394f19f6d62312350b566c4aebd
-- pandoc-types-1.17.6
-- ipynb-0.1
-- cmark-gfm-0.2.0
-- hslua-1.0.3.1
-- hslua-module-system-0.2.0
-- tasty-lua-0.2.0
-- skylighting-core-0.8.2
-- skylighting-0.8.2
-- doclayout-0.1
-- doctemplates-0.6
+- citeproc-0.1
+- pandoc-types-1.22
+- texmath-0.12.0.3
+- rfc5051-0.2
+- haddock-library-1.9.0
+- skylighting-0.10.0.2
+- skylighting-core-0.10.0.2
+- doclayout-0.3
+- emojis-0.1
+- hslua-1.1.2
+- jira-wiki-markup-1.3.2
+- HsYAML-0.2.1.0
+- HsYAML-aeson-0.2.0.0
+- doctemplates-0.8.2
+- commonmark-0.1.0.2
+- commonmark-extensions-0.2.0.1
+- commonmark-pandoc-0.2.0.1
+
 ghc-options:
    "$locals": -fhide-source-paths -Wno-missing-home-modules
-resolver: lts-13.17
+resolver: lts-14.6
+nix:
+  packages: [zlib]
+

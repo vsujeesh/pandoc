@@ -1,8 +1,7 @@
-{-# LANGUAGE NoImplicitPrelude    #-}
 {- |
    Module      : Text.Pandoc.Lua.Marshaling.MediaBag
-   Copyright   : © 2012-2019 John MacFarlane
-                 © 2017-2019 Albert Krewinkel
+   Copyright   : © 2012-2020 John MacFarlane
+                 © 2017-2020 Albert Krewinkel
    License     : GNU GPL, version 2 or above
    Maintainer  : Albert Krewinkel <tarleb+pandoc@moltkeplatz.de>
    Stability   : alpha
@@ -11,7 +10,6 @@ Instances to marshal (push) and unmarshal (peek) media data.
 -}
 module Text.Pandoc.Lua.Marshaling.MediaBag (pushIterator) where
 
-import Prelude
 import Foreign.Ptr (Ptr)
 import Foreign.StablePtr (StablePtr, deRefStablePtr, newStablePtr)
 import Foreign.Lua (Lua, NumResults, Peekable, Pushable, StackIndex)

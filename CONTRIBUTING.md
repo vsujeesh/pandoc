@@ -10,15 +10,21 @@ Ask on [pandoc-discuss].
 Found a bug?
 ------------
 
-Bug reports are welcome!  Please report all bugs on pandoc's github
+Bug reports are welcome!  Please report all bugs on pandoc's GitHub
 [issue tracker].
 
 Before you submit a bug report, search the [open issues] *and* [closed issues]
 to make sure the issue hasn't come up before. Also, check the [User's Guide] and
 [FAQs] for anything relevant.
 
-Make sure you can reproduce the bug with the [latest released version] of pandoc
-(or, even better, the [development version]).
+Make sure you can reproduce the bug with the [latest released
+version] of pandoc---or, even better, the development version,
+since the bug may have been fixed since the last release.
+[Nightly builds] are available, so you don't need to compile
+from source to test against the development version.
+(To fetch a nightly, visit the link, click the topmost "Nightly"
+in the table, then choose your platform under "Artifacts."  Note
+that you must be logged in with a GitHub account.)
 
 Your report should give detailed, *reproducible* instructions, including
 
@@ -146,7 +152,7 @@ Please follow these guidelines:
 
 10. We aim for compatibility with ghc versions from 8.0 to the
     latest release.  All pull requests and commits are tested
-    automatically on CircleCI.
+    automatically on GitHub Actions.
 
 Tests
 -----
@@ -187,6 +193,9 @@ modify `test/Tests/Old.hs`. Otherwise, it is better to modify the module
 under the `test/Tests` hierarchy corresponding to the pandoc module you
 are changing.  Alternatively, you may add a "command test" to
 the `/test/command/` hierarchy, following the pattern of the tests there.
+These test files should have a meaningful name, which can include the issue
+number and/or the feature that's being tested. For example, `5474-tables.md`
+refers to both issue and feature.
 
 You can rebuild the golden tests in `tests/` by passing
 `--accept` to the test script. (If you're using stack, `stack
@@ -210,10 +219,9 @@ With stack:
 
     stack bench
 
-You can also build pandoc with the `weigh-pandoc` flag and
-run `weigh-pandoc` to get some statistics on memory usage.
-(Eventually this should be incorporated into the benchmark
-suite.)
+You can also build `weigh-pandoc` (`stack build pandoc:weigh-pandoc`)
+to get some statistics on memory usage.  (Eventually this should
+be incorporated into the benchmark suite.)
 
 Using the REPL
 --------------
@@ -272,7 +280,7 @@ The code
 --------
 
 Pandoc has a publicly accessible git repository on
-github: <http://github.com/jgm/pandoc>.  To get a local copy of the source:
+GitHub: <http://github.com/jgm/pandoc>.  To get a local copy of the source:
 
     git clone https://github.com/jgm/pandoc.git
 
@@ -344,7 +352,7 @@ you may want to consider submitting a pull request to the
 [open issues]: https://github.com/jgm/pandoc/issues
 [closed issues]: https://github.com/jgm/pandoc/issues?q=is%3Aissue+is%3Aclosed
 [latest released version]: https://github.com/jgm/pandoc/releases/latest
-[development version]: https://github.com/pandoc-extras/pandoc-nightly/releases/latest
+[Nightly builds]: https://github.com/jgm/pandoc/actions?query=workflow%3ANightly
 [pandoc-discuss]: http://groups.google.com/group/pandoc-discuss
 [issue tracker]: https://github.com/jgm/pandoc/issues
 [User's Guide]: http://pandoc.org/MANUAL.html
@@ -366,4 +374,3 @@ you may want to consider submitting a pull request to the
 [status:more-discussion-needed]: https://github.com/jgm/pandoc/labels/status:more-discussion-needed
 [status:more-info-needed]: https://github.com/jgm/pandoc/labels/status:more-info-needed
 [stack]: https://github.com/commercialhaskell/stack
-

@@ -2,7 +2,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {- |
    Module      : Main
-   Copyright   : © 2014-2019 John MacFarlane <jgm@berkeley.edu>
+   Copyright   : © 2014-2020 John MacFarlane <jgm@berkeley.edu>
    License     : GNU GPL, version 2 or above
 
    Maintainer  : John MacFarlane <jgm@berkeley.edu>
@@ -41,14 +41,17 @@ app req respond = do
   text <- getParam "text" >>= checkLength . fromMaybe T.empty
   fromFormat <- fromMaybe "" <$> getParam "from"
   toFormat <- fromMaybe "" <$> getParam "to"
-  let reader = case getReader (T.unpack fromFormat) of
+  standalone <- (==) "1" . fromMaybe "" <$> getParam "standalone"
+  compiledTemplate <- runIO . compileDefaultTemplate $ toFormat
+  let template = if standalone then either (const Nothing) Just compiledTemplate else Nothing
+  let reader = case runPure $ getReader fromFormat of
                     Right (TextReader r, es) -> r readerOpts{
                        readerExtensions = es }
                     _ -> error $ "could not find reader for "
                                   ++ T.unpack fromFormat
-  let writer = case getWriter (T.unpack toFormat) of
+  let writer = case runPure $ getWriter toFormat of
                     Right (TextWriter w, es) -> w writerOpts{
-                       writerExtensions = es }
+                       writerExtensions = es, writerTemplate = template }
                     _ -> error $ "could not find writer for " ++
                            T.unpack toFormat
   let result = case runPure $ reader (tabFilter 4 text) >>= writer of
@@ -71,8 +74,7 @@ checkLength t =
 writerOpts :: WriterOptions
 writerOpts = def { writerReferenceLinks = True,
                    writerEmailObfuscation = NoObfuscation,
-                   writerHTMLMathMethod = MathJax (defaultMathJaxURL ++
-                       "MathJax.js?config=TeX-AMS_CHTML-full"),
+                   writerHTMLMathMethod = MathJax defaultMathJaxURL,
                    writerHighlightStyle = Just pygments }
 
 readerOpts :: ReaderOptions

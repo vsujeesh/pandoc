@@ -1,10 +1,10 @@
 {-# LANGUAGE NoImplicitPrelude #-}
 {- |
    Module      : Tests.Readers.FB2
-   Copyright   : © 2018-2019 Alexander Krotov
+   Copyright   : © 2018-2020 Alexander Krotov
    License     : GNU GPL, version 2 or above
 
-   Maintainer  : © 2018-2019 Alexander Krotov <ilabdsf@gmail.com>
+   Maintainer  : © 2018-2020 Alexander Krotov <ilabdsf@gmail.com>
    Stability   : alpha
    Portability : portable
 
@@ -18,16 +18,17 @@ import Tests.Helpers
 import Test.Tasty.Golden (goldenVsString)
 import qualified Data.ByteString as BS
 import Text.Pandoc
-import Text.Pandoc.UTF8 (toText, fromTextLazy)
-import Data.Text (Text)
-import Data.Text.Lazy (fromStrict)
+import Text.Pandoc.UTF8 (toText, fromStringLazy)
+import Data.Text (Text, unpack)
 import System.FilePath (replaceExtension)
 
 fb2ToNative :: Text -> Text
 fb2ToNative = purely (writeNative def{ writerTemplate = Just mempty }) . purely (readFB2 def)
 
 fb2Test :: TestName -> FilePath -> TestTree
-fb2Test name path = goldenVsString name native (fromTextLazy . fromStrict . fb2ToNative . toText <$> BS.readFile path)
+fb2Test name path = goldenVsString name native
+  (fromStringLazy . filter (/='\r') . unpack . fb2ToNative . toText
+    <$> BS.readFile path)
   where native = replaceExtension path ".native"
 
 tests :: [TestTree]

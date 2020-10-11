@@ -1,6 +1,6 @@
 {- |
    Module      : Text.Pandoc.Lua.Module.Types
-   Copyright   : © 2019 Albert Krewinkel
+   Copyright   : © 2019-2020 Albert Krewinkel
    License     : GNU GPL, version 2 or above
 
    Maintainer  : Albert Krewinkel <tarleb+pandoc@moltkeplatz.de>
@@ -12,14 +12,12 @@ module Text.Pandoc.Lua.Module.Types
   ( pushModule
   ) where
 
-import Prelude
 import Data.Version (Version)
 import Foreign.Lua (Lua, NumResults)
 import Text.Pandoc.Definition
 import Text.Pandoc.Lua.Marshaling.AST (LuaAttr, LuaListAttributes)
 import Text.Pandoc.Lua.Marshaling.Version ()
 import Text.Pandoc.Lua.Util (addFunction)
-import Text.Pandoc.Shared (Element (..))
 
 import qualified Foreign.Lua as Lua
 
@@ -38,7 +36,6 @@ pushCloneTable = do
   addFunction "Attr" cloneAttr
   addFunction "Block" cloneBlock
   addFunction "Citation" cloneCitation
-  addFunction "Element" cloneElement
   addFunction "Inline" cloneInline
   addFunction "Meta" cloneMeta
   addFunction "MetaValue" cloneMetaValue
@@ -54,9 +51,6 @@ cloneBlock = return
 
 cloneCitation :: Citation -> Lua Citation
 cloneCitation = return
-
-cloneElement :: Element -> Lua Element
-cloneElement = return
 
 cloneInline :: Inline -> Lua Inline
 cloneInline = return

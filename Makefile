@@ -1,17 +1,14 @@
 version?=$(shell grep '^[Vv]ersion:' pandoc.cabal | awk '{print $$2;}')
 pandoc=$(shell find dist -name pandoc -type f -exec ls -t {} \; | head -1)
-SOURCEFILES?=$(shell find pandoc.hs src test -name '*.hs')
+SOURCEFILES?=$(shell git ls-tree -r master --name-only | grep "\.hs$$")
 BRANCH?=master
 RESOLVER?=lts-13
 GHCOPTS=-fdiagnostics-color=always
-# Later:
-# -Wpartial-fields        (currently used in Powerpoint writer)
-# -Wmissing-export-lists  (currently some Odt modules violate this)
-# -Wredundant-constraints (problematic if we want to support older base)
 WEBSITE=../../web/pandoc.org
+REVISION?=1
 
 quick:
-	stack install --ghc-options='$(GHCOPTS)' --install-ghc --flag 'pandoc:embed_data_files' --fast --test --test-arguments='-j4 --hide-successes $(TESTARGS)'
+	stack install --ghc-options='$(GHCOPTS)' --install-ghc --flag 'pandoc:embed_data_files' --fast --test --ghc-options='-j +RTS -A64m -RTS' --test-arguments='-j4 --hide-successes $(TESTARGS)'
 
 quick-cabal:
 	cabal new-configure . --ghc-options '$(GHCOPTS)' --disable-optimization --enable-tests
@@ -19,12 +16,15 @@ quick-cabal:
 	cabal new-run test-pandoc --disable-optimization -- --hide-successes $(TESTARGS)
 
 full-cabal:
-	cabal new-configure . --ghc-options '$(GHCOPTS)' --flags '+embed_data_files +weigh-pandoc +trypandoc' --enable-tests --enable-benchmarks
+	cabal new-configure . --ghc-options '$(GHCOPTS)' --flags '+embed_data_files +trypandoc' --enable-tests --enable-benchmarks
 	cabal new-build . --disable-optimization
 	cabal new-run test-pandoc --disable-optimization -- --hide-successes $(TESTARGS)
 
 full:
-	stack install --flag 'pandoc:embed_data_files' --flag 'pandoc:weigh-pandoc' --flag 'pandoc:trypandoc' --bench --no-run-benchmarks --test --test-arguments='-j4 --hide-successes' --ghc-options '-Wall -Werror -fno-warn-unused-do-bind -O0 -j4 $(GHCOPTS)'
+	stack install --flag 'pandoc:embed_data_files' --flag 'pandoc:trypandoc' --bench --no-run-benchmarks --test --test-arguments='-j4 --hide-successes' --ghc-options '-Wall -Werror -fno-warn-unused-do-bind -O0 -j4 $(GHCOPTS)'
+
+ghci:
+	stack ghci --flag 'pandoc:embed_data_files'
 
 haddock:
 	stack haddock
@@ -41,16 +41,22 @@ bench:
 	stack bench --benchmark-arguments='$(BENCHARGS)' --ghc-options '$(GHCOPTS)'
 
 weigh:
-	stack build --ghc-options '$(GHCOPTS)' --flag 'pandoc:weigh-pandoc' && stack exec weigh-pandoc
+	stack build --ghc-options '$(GHCOPTS)' pandoc:weigh-pandoc && stack exec weigh-pandoc
 
 reformat:
 	for f in $(SOURCEFILES); do echo $$f; stylish-haskell -i $$f ; done
 
-lint:
-	for f in $(SOURCEFILES); do echo $$f; hlint --verbose --refactor --refactor-options='-i -s' $$f; done
+lint: hlint fix_spacing
+
+hlint:
+	for f in $(SOURCEFILES); do echo $$f; hlint --verbose --refactor --refactor-options='-s -o -' $$f; done
+
+fix_spacing:
+	# Fix trailing newlines and spaces at ends of lines
+	for f in $(SOURCEFILES); do printf '%s\n' "`cat $$f`" | sed -e 's/  *$$//' > $$f.tmp; mv $$f.tmp $$f; done
 
 changes_github:
-	pandoc --filter tools/extract-changes.hs changelog -t gfm --wrap=none | sed -e 's/\\#/#/g' | pbcopy
+	pandoc --filter tools/extract-changes.hs changelog.md -t gfm --wrap=none --template tools/changes_template.html | sed -e 's/\\#/#/g' | pbcopy
 
 dist: man/pandoc.1
 	cabal sdist
@@ -59,62 +65,33 @@ dist: man/pandoc.1
 	cd pandoc-${version}
 	stack setup && stack test && cd .. && rm -rf "pandoc-${version}"
 
-packages: checkdocs winpkg debpkg macospkg
-
 checkdocs: README.md
 	! grep -n -e "\t" MANUAL.txt changelog
 
 debpkg: man/pandoc.1
-	make -C linux && \
-	cp linux/artifacts/pandoc-$(version)-*.* .
+	docker run -v `pwd`:/mnt \
+                   -v `pwd`/linux/artifacts:/artifacts \
+		   -e REVISION=$(REVISION) \
+		   -w /mnt \
+	           utdemir/ghc-musl:v12-libgmp-ghc8101 bash \
+		   /mnt/linux/make_artifacts.sh
 
-macospkg: man/pandoc.1
-	./macos/make_macos_package.sh
+macospkg:
+	rm -rf macos-release-candidate
+	aws s3 sync s3://travis-jgm-pandoc macos-release-candidate
+	make -C macos-release-candidate
 
-winpkg: pandoc-$(version)-windows-i386.msi pandoc-$(version)-windows-i386.zip pandoc-$(version)-windows-x86_64.msi pandoc-$(version)-windows-x86_64.zip
-
-pandoc-$(version)-windows-%.zip: pandoc-$(version)-windows-%.msi
-	ORIGDIR=`pwd` && \
-	CONTAINER=$(basename $<) && \
-	TEMPDIR=`mktemp -d` && \
-	msiextract -C $$TEMPDIR/msi $< && \
-	pushd $$TEMPDIR && \
-	mkdir $$CONTAINER && \
-	find msi -type f -exec cp {} $$CONTAINER/ \; && \
-	zip -r $$ORIGDIR/$@ $$CONTAINER && \
-	popd & \
-	rm -rf $$TEMPDIR
-
-pandoc-$(version)-windows-%.msi: pandoc-windows-%.msi
-	osslsigncode sign -pkcs12 ~/Private/SectigoCodeSigning.exp2023.p12 -in $< -i http://johnmacfarlane.net/ -t http://timestamp.comodoca.com/ -out $@ -askpass
-	rm $<
-
-.INTERMEDIATE: pandoc-windows-i386.msi pandoc-windows-x86_64.msi
-
-pandoc-windows-i386.msi:
-	JOBID=$(shell curl https://ci.appveyor.com/api/projects/jgm/pandoc | jq '.build.jobs[]| select(.name|test("i386")) | .jobId') && \
-	wget "https://ci.appveyor.com/api/buildjobs/$$JOBID/artifacts/windows%2F$@" -O $@
-
-pandoc-windows-x86_64.msi:
-	JOBID=$(shell curl https://ci.appveyor.com/api/projects/jgm/pandoc | jq '.build.jobs[]| select(.name|test("x86_64")) | .jobId') && \
-	wget "https://ci.appveyor.com/api/buildjobs/$$JOBID/artifacts/windows%2F$@" -O $@
-
-man/pandoc.1: MANUAL.txt man/pandoc.1.template
-	pandoc $< -f markdown-smart -t man -s --template man/pandoc.1.template \
+man/pandoc.1: MANUAL.txt man/pandoc.1.before man/pandoc.1.after
+	pandoc $< -f markdown -t man -s \
 		--lua-filter man/manfilter.lua \
-		--variable version="pandoc $(version)" \
+		--include-before-body man/pandoc.1.before \
+		--include-after-body man/pandoc.1.after \
+		--metadata author="" \
+		--variable footer="pandoc $(version)" \
 		-o $@
 
-doc/lua-filters.md: tools/ldoc.ltp data/pandoc.lua tools/update-lua-docs.lua
-	cp $@ $@.tmp
-	pandoc -t markdown --columns=64 --atx-headers  \
-	       -f markdown -t markdown --standalone\
-         --lua-filter tools/update-lua-docs.lua \
-	       -o $@ $@.tmp
-	rm $@.tmp
-
 README.md: README.template MANUAL.txt tools/update-readme.lua
-	pandoc --lua-filter tools/update-readme.lua --reference-links \
+	pandoc --lua-filter tools/update-readme.lua \
 	      --reference-location=section -t gfm $< -o $@
 
 download_stats:
@@ -123,9 +100,9 @@ download_stats:
 
 pandoc-templates:
 	rm ../pandoc-templates/default.* ; \
-	cp data/templates/default.* ../pandoc-templates/ ; \
+	cp data/templates/* ../pandoc-templates/ ; \
 	pushd ../pandoc-templates/ && \
-	git add default.* && \
+	git add * && \
 	git commit -m "Updated templates for pandoc $(version)" && \
 	popd
 
@@ -140,4 +117,4 @@ update-website:
 clean:
 	stack clean
 
-.PHONY: deps quick full haddock install clean test bench changes_github macospkg dist prof download_stats reformat lint weigh doc/lua-filters.md packages pandoc-templates trypandoc update-website debpkg macospkg winpkg checkdocs ghcid
+.PHONY: deps quick full haddock install clean test bench changes_github macospkg dist prof download_stats reformat lint weigh doc/lua-filters.md pandoc-templates trypandoc update-website debpkg macospkg checkdocs ghcid ghci fix_spacing hlint

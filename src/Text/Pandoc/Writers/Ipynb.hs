@@ -1,10 +1,8 @@
-{-# LANGUAGE NoImplicitPrelude #-}
-{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {- |
    Module      : Text.Pandoc.Writers.Ipynb
-   Copyright   : Copyright (C) 2019 John MacFarlane
+   Copyright   : Copyright (C) 2019-2020 John MacFarlane
    License     : GNU GPL, version 2 or above
 
    Maintainer  : John MacFarlane <jgm@berkeley.edu>
@@ -16,20 +14,19 @@ Ipynb (Jupyter notebook JSON format) writer for pandoc.
 -}
 module Text.Pandoc.Writers.Ipynb ( writeIpynb )
 where
-import Prelude
 import Control.Monad.State
 import qualified Data.Map as M
-import Data.Char (toLower)
 import Data.Maybe (catMaybes, fromMaybe)
 import Text.Pandoc.Options
 import Text.Pandoc.Definition
 import Data.Ipynb as Ipynb
 import Text.Pandoc.Walk (walkM)
 import qualified Text.Pandoc.Builder as B
-import Text.Pandoc.Class
+import Text.Pandoc.Class.PandocMonad
 import Text.Pandoc.Logging
 import Data.Text (Text)
 import qualified Data.Text as T
+import qualified Data.Text.Lazy as TL
 import Data.Aeson as Aeson
 import qualified Text.Pandoc.UTF8 as UTF8
 import Text.Pandoc.Shared (safeRead, isURI)
@@ -39,6 +36,7 @@ import qualified Data.Text.Encoding as TE
 import qualified Data.ByteString.Lazy as BL
 import Data.Aeson.Encode.Pretty (Config(..), defConfig,
            encodePretty', keyOrder, Indent(Spaces))
+import Text.DocLayout (literal)
 
 writeIpynb :: PandocMonad m => WriterOptions -> Pandoc -> m Text
 writeIpynb opts d = do
@@ -57,9 +55,9 @@ writeIpynb opts d = do
 pandocToNotebook :: PandocMonad m
                  => WriterOptions -> Pandoc -> m (Notebook NbV4)
 pandocToNotebook opts (Pandoc meta blocks) = do
-  let blockWriter bs = writeMarkdown
+  let blockWriter bs = literal <$> writeMarkdown
            opts{ writerTemplate = Nothing } (Pandoc nullMeta bs)
-  let inlineWriter ils = T.stripEnd <$> writeMarkdown
+  let inlineWriter ils = literal . T.stripEnd <$> writeMarkdown
            opts{ writerTemplate = Nothing } (Pandoc nullMeta [Plain ils])
   let jupyterMeta =
         case lookupMeta "jupyter" meta of
@@ -74,7 +72,7 @@ pandocToNotebook opts (Pandoc meta blocks) = do
                         Nothing -> (4, 5)
                _                -> (4, 5) -- write as v4.5
   metadata' <- toJSON <$> metaToContext' blockWriter inlineWriter
-                 (B.deleteMeta "nbformat" $
+                 (B.deleteMeta "nbformat" .
                   B.deleteMeta "nbformat_minor" $
                   jupyterMeta)
   -- convert from a Value (JSON object) to a M.Map Text Value:
@@ -93,13 +91,13 @@ addAttachment :: PandocMonad m
 addAttachment (Image attr lab (src,tit))
   | not (isURI src) = do
   (img, mbmt) <- fetchItem src
-  let mt = maybe "application/octet-stream" (T.pack) mbmt
-  modify $ M.insert (T.pack src)
+  let mt = fromMaybe "application/octet-stream" mbmt
+  modify $ M.insert src
           (MimeBundle (M.insert mt (BinaryData img) mempty))
   return $ Image attr lab ("attachment:" <> src, tit)
 addAttachment x = return x
 
-extractCells :: PandocMonad m => WriterOptions -> [Block] -> m [Cell a]
+extractCells :: PandocMonad m => WriterOptions -> [Block] -> m [Ipynb.Cell a]
 extractCells _ [] = return []
 extractCells opts (Div (_id,classes,kvs) xs : bs)
   | "cell" `elem` classes
@@ -108,7 +106,7 @@ extractCells opts (Div (_id,classes,kvs) xs : bs)
       (newdoc, attachments) <-
         runStateT (walkM addAttachment (Pandoc nullMeta xs)) mempty
       source <- writeMarkdown opts{ writerTemplate = Nothing } newdoc
-      (Cell{
+      (Ipynb.Cell{
           cellType = Markdown
         , cellSource = Source $ breakLines $ T.stripEnd source
         , cellMetadata = meta
@@ -120,12 +118,12 @@ extractCells opts (Div (_id,classes,kvs) xs : bs)
   , "code" `elem` classes = do
       let (codeContent, rest) =
             case xs of
-               (CodeBlock _ t : ys) -> (T.pack t, ys)
+               (CodeBlock _ t : ys) -> (t, ys)
                ys                   -> (mempty, ys)
       let meta = pairsToJSONMeta kvs
       outputs <- catMaybes <$> mapM blockToOutput rest
       let exeCount = lookup "execution_count" kvs >>= safeRead
-      (Cell{
+      (Ipynb.Cell{
           cellType = Ipynb.Code {
                 codeExecutionCount = exeCount
               , codeOutputs = outputs
@@ -138,51 +136,51 @@ extractCells opts (Div (_id,classes,kvs) xs : bs)
       case consolidateAdjacentRawBlocks xs of
         [RawBlock (Format f) raw] -> do
           let format' =
-                case map toLower f of
+                case T.toLower f of
                   "html"     -> "text/html"
                   "revealjs" -> "text/html"
                   "latex"    -> "text/latex"
                   "markdown" -> "text/markdown"
                   "rst"      -> "text/x-rst"
                   _          -> f
-          (Cell{
+          (Ipynb.Cell{
               cellType = Raw
-            , cellSource = Source $ breakLines $ T.pack raw
+            , cellSource = Source $ breakLines raw
             , cellMetadata = if format' == "ipynb" -- means no format given
                                 then mempty
                                 else M.insert "format"
-                                       (Aeson.String $ T.pack format') mempty
+                                       (Aeson.String format') mempty
             , cellAttachments = Nothing } :) <$> extractCells opts bs
         _ -> extractCells opts bs
 extractCells opts (CodeBlock (_id,classes,kvs) raw : bs)
   | "code" `elem` classes = do
       let meta = pairsToJSONMeta kvs
       let exeCount = lookup "execution_count" kvs >>= safeRead
-      (Cell{
+      (Ipynb.Cell{
           cellType = Ipynb.Code {
                 codeExecutionCount = exeCount
               , codeOutputs = []
               }
-        , cellSource = Source $ breakLines $ T.pack raw
+        , cellSource = Source $ breakLines raw
         , cellMetadata = meta
         , cellAttachments = Nothing } :) <$> extractCells opts bs
 extractCells opts (b:bs) = do
       let isCodeOrDiv (CodeBlock (_,cl,_) _) = "code" `elem` cl
           isCodeOrDiv (Div (_,cl,_) _)       = "cell" `elem` cl
           isCodeOrDiv _                      = False
-      let (mds, rest) = break (isCodeOrDiv) bs
+      let (mds, rest) = break isCodeOrDiv bs
       extractCells opts (Div ("",["cell","markdown"],[]) (b:mds) : rest)
 
 blockToOutput :: PandocMonad m => Block -> m (Maybe (Output a))
 blockToOutput (Div (_,["output","stream",sname],_) (CodeBlock _ t:_)) =
   return $ Just
-         $ Stream{ streamName = T.pack sname
-               , streamText = Source (breakLines $ T.pack t) }
+         $ Stream{ streamName = sname
+               , streamText = Source (breakLines t) }
 blockToOutput (Div (_,["output","error"],kvs) (CodeBlock _ t:_)) =
   return $ Just
-         $ Err{ errName = maybe mempty T.pack (lookup "ename" kvs)
-              , errValue = maybe mempty T.pack (lookup "evalue" kvs)
-              , errTraceback = breakLines $ T.pack t }
+         $ Err{ errName = fromMaybe mempty (lookup "ename" kvs)
+              , errValue = fromMaybe mempty (lookup "evalue" kvs)
+              , errTraceback = breakLines t }
 blockToOutput (Div (_,["output","execute_result"],kvs) bs) = do
   (data', metadata') <- extractData bs
   return $ Just
@@ -206,28 +204,28 @@ extractData bs = do
       (img, mbmt) <- fetchItem src
       case mbmt of
         Just mt -> return
-          (M.insert (T.pack mt) (BinaryData img) mmap,
+          (M.insert mt (BinaryData img) mmap,
            meta <> pairsToJSONMeta kvs)
         Nothing -> (mmap, meta) <$ report (BlockNotRendered b)
     go (mmap, meta) b@(CodeBlock (_,["json"],_) code) =
-      case decode (UTF8.fromStringLazy code) of
+      case decode (UTF8.fromTextLazy $ TL.fromStrict code) of
         Just v  -> return
                     (M.insert "application/json" (JsonData v) mmap, meta)
         Nothing -> (mmap, meta) <$ report (BlockNotRendered b)
     go (mmap, meta) (CodeBlock ("",[],[]) code) =
-       return (M.insert "text/plain" (TextualData (T.pack code)) mmap, meta)
+       return (M.insert "text/plain" (TextualData code) mmap, meta)
     go (mmap, meta) (RawBlock (Format "html") raw) =
-       return (M.insert "text/html" (TextualData (T.pack raw)) mmap, meta)
+       return (M.insert "text/html" (TextualData raw) mmap, meta)
     go (mmap, meta) (RawBlock (Format "latex") raw) =
-       return (M.insert "text/latex" (TextualData (T.pack raw)) mmap, meta)
+       return (M.insert "text/latex" (TextualData raw) mmap, meta)
     go (mmap, meta) (Div _ bs') = foldM go (mmap, meta) bs'
     go (mmap, meta) b = (mmap, meta) <$ report (BlockNotRendered b)
 
-pairsToJSONMeta :: [(String, String)] -> JSONMeta
+pairsToJSONMeta :: [(Text, Text)] -> JSONMeta
 pairsToJSONMeta kvs =
-  M.fromList [(T.pack k, case Aeson.decode (UTF8.fromStringLazy v) of
+  M.fromList [(k, case Aeson.decode (UTF8.fromTextLazy $ TL.fromStrict v) of
                            Just val -> val
-                           Nothing  -> String (T.pack v))
+                           Nothing  -> String v)
              | (k,v) <- kvs
              , k /= "execution_count"
              ]

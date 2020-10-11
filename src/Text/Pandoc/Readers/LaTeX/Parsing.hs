@@ -1,11 +1,11 @@
-{-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE FlexibleInstances     #-}
+{-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings     #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
 {- |
    Module      : Text.Pandoc.Readers.LaTeX.Parsing
-   Copyright   : Copyright (C) 2006-2019 John MacFarlane
+   Copyright   : Copyright (C) 2006-2020 John MacFarlane
    License     : GNU GPL, version 2 or above
 
    Maintainer  : John MacFarlane <jgm@berkeley.edu>
@@ -18,6 +18,8 @@ module Text.Pandoc.Readers.LaTeX.Parsing
   ( DottedNum(..)
   , renderDottedNum
   , incrementDottedNum
+  , TheoremSpec(..)
+  , TheoremStyle(..)
   , LaTeXState(..)
   , defaultLaTeXState
   , LP
@@ -67,9 +69,16 @@ module Text.Pandoc.Readers.LaTeX.Parsing
   , dimenarg
   , ignore
   , withRaw
+  , keyvals
+  , verbEnv
+  , begin_
+  , end_
+  , getRawCommand
+  , skipopts
+  , rawopt
+  , overlaySpecification
   ) where
 
-import Prelude
 import Control.Applicative (many, (<|>))
 import Control.Monad
 import Control.Monad.Except (throwError)
@@ -82,7 +91,7 @@ import qualified Data.Set as Set
 import Data.Text (Text)
 import qualified Data.Text as T
 import Text.Pandoc.Builder
-import Text.Pandoc.Class (PandocMonad, report)
+import Text.Pandoc.Class.PandocMonad (PandocMonad, report)
 import Text.Pandoc.Error (PandocError (PandocMacroLoop))
 import Text.Pandoc.Logging
 import Text.Pandoc.Options
@@ -92,14 +101,13 @@ import Text.Pandoc.Readers.LaTeX.Types (ExpansionPoint (..), Macro (..),
                                         ArgSpec (..), Tok (..), TokType (..))
 import Text.Pandoc.Shared
 import Text.Parsec.Pos
-
--- import Debug.Trace (traceShowId)
+-- import Debug.Trace
 
 newtype DottedNum = DottedNum [Int]
-  deriving (Show)
+  deriving (Show, Eq)
 
-renderDottedNum :: DottedNum -> String
-renderDottedNum (DottedNum xs) =
+renderDottedNum :: DottedNum -> T.Text
+renderDottedNum (DottedNum xs) = T.pack $
   intercalate "." (map show xs)
 
 incrementDottedNum :: Int -> DottedNum -> DottedNum
@@ -108,22 +116,40 @@ incrementDottedNum level (DottedNum ns) = DottedNum $
        (x:xs) -> reverse (x+1 : xs)
        []     -> []  -- shouldn't happen
 
+data TheoremStyle =
+  PlainStyle | DefinitionStyle | RemarkStyle
+  deriving (Show, Eq)
+
+data TheoremSpec =
+  TheoremSpec
+    { theoremName    :: Inlines
+    , theoremStyle   :: TheoremStyle
+    , theoremSeries  :: Maybe Text
+    , theoremSyncTo  :: Maybe Text
+    , theoremNumber  :: Bool
+    , theoremLastNum :: DottedNum }
+    deriving (Show, Eq)
+
 data LaTeXState = LaTeXState{ sOptions       :: ReaderOptions
                             , sMeta          :: Meta
                             , sQuoteContext  :: QuoteContext
                             , sMacros        :: M.Map Text Macro
-                            , sContainers    :: [String]
+                            , sContainers    :: [Text]
                             , sLogMessages   :: [LogMessage]
-                            , sIdentifiers   :: Set.Set String
+                            , sIdentifiers   :: Set.Set Text
                             , sVerbatimMode  :: Bool
-                            , sCaption       :: (Maybe Inlines, Maybe String)
+                            , sCaption       :: Maybe Inlines
                             , sInListItem    :: Bool
                             , sInTableCell   :: Bool
                             , sLastHeaderNum :: DottedNum
                             , sLastFigureNum :: DottedNum
-                            , sLabels        :: M.Map String [Inline]
+                            , sLastTableNum  :: DottedNum
+                            , sTheoremMap    :: M.Map Text TheoremSpec
+                            , sLastTheoremStyle :: TheoremStyle
+                            , sLastLabel     :: Maybe Text
+                            , sLabels        :: M.Map Text [Inline]
                             , sHasChapters   :: Bool
-                            , sToggles       :: M.Map String Bool
+                            , sToggles       :: M.Map Text Bool
                             , sExpanded      :: Bool
                             }
      deriving Show
@@ -137,11 +163,15 @@ defaultLaTeXState = LaTeXState{ sOptions       = def
                               , sLogMessages   = []
                               , sIdentifiers   = Set.empty
                               , sVerbatimMode  = False
-                              , sCaption       = (Nothing, Nothing)
+                              , sCaption       = Nothing
                               , sInListItem    = False
                               , sInTableCell   = False
                               , sLastHeaderNum = DottedNum []
                               , sLastFigureNum = DottedNum []
+                              , sLastTableNum  = DottedNum []
+                              , sTheoremMap    = M.empty
+                              , sLastTheoremStyle = PlainStyle
+                              , sLastLabel     = Nothing
                               , sLabels        = M.empty
                               , sHasChapters   = False
                               , sToggles       = M.empty
@@ -202,10 +232,9 @@ withVerbatimMode parser = do
        return result
 
 rawLaTeXParser :: (PandocMonad m, HasMacros s, HasReaderOptions s)
-               => Bool -> LP m a -> LP m a -> ParserT String s m (a, String)
-rawLaTeXParser retokenize parser valParser = do
-  inp <- getInput
-  let toks = tokenize "source" $ T.pack inp
+               => [Tok] -> Bool -> LP m a -> LP m a
+               -> ParserT Text s m (a, Text)
+rawLaTeXParser toks retokenize parser valParser = do
   pstate <- getState
   let lstate = def{ sOptions = extractReaderOptions pstate }
   let lstate' = lstate { sMacros = extractMacros pstate }
@@ -235,18 +264,18 @@ rawLaTeXParser retokenize parser valParser = do
                          , not (" " `T.isSuffixOf` result)
                           -> result <> " "
                         _ -> result
-                return (val, T.unpack result')
+                return (val, result')
 
 applyMacros :: (PandocMonad m, HasMacros s, HasReaderOptions s)
-            => String -> ParserT String s m String
+            => Text -> ParserT Text s m Text
 applyMacros s = (guardDisabled Ext_latex_macros >> return s) <|>
-   do let retokenize = toksToString <$> many (satisfyTok (const True))
+   do let retokenize = untokenize <$> many (satisfyTok (const True))
       pstate <- getState
       let lstate = def{ sOptions = extractReaderOptions pstate
                       , sMacros  = extractMacros pstate }
-      res <- runParserT retokenize lstate "math" (tokenize "math" (T.pack s))
+      res <- runParserT retokenize lstate "math" (tokenize "math" s)
       case res of
-           Left e   -> fail (show e)
+           Left e   -> Prelude.fail (show e)
            Right s' -> return s'
 
 tokenize :: SourceName -> Text -> [Tok]
@@ -309,7 +338,7 @@ totoks pos t =
                       : totoks (incSourceColumn pos 2) rest'
          | c == '#' ->
            let (t1, t2) = T.span (\d -> d >= '0' && d <= '9') rest
-           in  case safeRead (T.unpack t1) of
+           in  case safeRead t1 of
                     Just i ->
                        Tok pos (Arg i) ("#" <> t1)
                        : totoks (incSourceColumn pos (1 + T.length t1)) t2
@@ -353,10 +382,21 @@ isLowerHex :: Char -> Bool
 isLowerHex x = x >= '0' && x <= '9' || x >= 'a' && x <= 'f'
 
 untokenize :: [Tok] -> Text
-untokenize = mconcat . map untoken
+untokenize = foldr untokenAccum mempty
+
+untokenAccum :: Tok -> Text -> Text
+untokenAccum (Tok _ (CtrlSeq _) t) accum =
+  -- insert space to prevent breaking a control sequence; see #5836
+  case (T.unsnoc t, T.uncons accum) of
+    (Just (_,c), Just (d,_))
+      | isLetter c
+      , isLetter d
+      -> t <> " " <> accum
+    _ -> t <> accum
+untokenAccum (Tok _ _ t) accum = t <> accum
 
 untoken :: Tok -> Text
-untoken (Tok _ _ t) = t
+untoken t = untokenAccum t mempty
 
 toksToString :: [Tok] -> String
 toksToString = T.unpack . untokenize
@@ -382,7 +422,7 @@ doMacros = do
       updateState $ \st -> st{ sExpanded = True }
 
 doMacros' :: PandocMonad m => Int -> [Tok] -> LP m [Tok]
-doMacros' n inp = do
+doMacros' n inp =
   case inp of
      Tok spos (CtrlSeq "begin") _ : Tok _ Symbol "{" :
       Tok _ Word name : Tok _ Symbol "}" : ts
@@ -438,7 +478,7 @@ doMacros' n inp = do
 
     handleMacros n' spos name ts = do
       when (n' > 20)  -- detect macro expansion loops
-        $ throwError $ PandocMacroLoop (T.unpack name)
+        $ throwError $ PandocMacroLoop name
       macros <- sMacros <$> getState
       case M.lookup name macros of
            Nothing -> mzero
@@ -454,7 +494,7 @@ doMacros' n inp = do
              lstate <- getState
              res <- lift $ runParserT getargs' lstate "args" ts
              case res of
-               Left _ -> fail $ "Could not parse arguments for " ++
+               Left _ -> Prelude.fail $ "Could not parse arguments for " ++
                                 T.unpack name
                Right (args, rest) -> do
                  -- first boolean param is true if we're tokenizing
@@ -519,7 +559,9 @@ symbolIn cs = satisfyTok isInCs
         isInCs _ = False
 
 sp :: PandocMonad m => LP m ()
-sp = whitespace <|> endline
+sp = do
+  optional $ skipMany (whitespace <|> comment)
+  optional $ endline  *> skipMany (whitespace <|> comment)
 
 whitespace :: PandocMonad m => LP m ()
 whitespace = () <$ satisfyTok isSpaceTok
@@ -578,15 +620,15 @@ primEscape = do
                     Just (c, _)
                       | c >= '\64' && c <= '\127' -> return (chr (ord c - 64))
                       | otherwise                 -> return (chr (ord c + 64))
-                    Nothing -> fail "Empty content of Esc1"
-       Esc2 -> case safeRead ('0':'x':T.unpack (T.drop 2 t)) of
+                    Nothing -> Prelude.fail "Empty content of Esc1"
+       Esc2 -> case safeRead ("0x" <> T.drop 2 t) of
                     Just x  -> return (chr x)
-                    Nothing -> fail $ "Could not read: " ++ T.unpack t
-       _    -> fail "Expected an Esc1 or Esc2 token" -- should not happen
+                    Nothing -> Prelude.fail $ "Could not read: " ++ T.unpack t
+       _    -> Prelude.fail "Expected an Esc1 or Esc2 token" -- should not happen
 
 bgroup :: PandocMonad m => LP m Tok
 bgroup = try $ do
-  skipMany sp
+  optional sp
   symbol '{' <|> controlSeq "bgroup" <|> controlSeq "begingroup"
 
 egroup :: PandocMonad m => LP m Tok
@@ -644,7 +686,8 @@ bracketed parser = try $ do
 bracketedToks :: PandocMonad m => LP m [Tok]
 bracketedToks = do
   symbol '['
-  mconcat <$> manyTill (braced <|> (:[]) <$> anyTok) (symbol ']')
+  concat <$> manyTill ((snd <$> withRaw (try braced)) <|> count 1 anyTok)
+                      (symbol ']')
 
 parenWrapped :: PandocMonad m => Monoid a => LP m a -> LP m a
 parenWrapped parser = try $ do
@@ -667,7 +710,7 @@ dimenarg = try $ do
   guard $ rest `elem` ["", "pt","pc","in","bp","cm","mm","dd","cc","sp"]
   return $ T.pack ['=' | ch] <> minus <> s
 
-ignore :: (Monoid a, PandocMonad m) => String -> ParserT s u m a
+ignore :: (Monoid a, PandocMonad m) => Text -> ParserT s u m a
 ignore raw = do
   pos <- getPosition
   report $ SkippedContent raw pos
@@ -681,3 +724,123 @@ withRaw parser = do
   let raw = takeWhile (\(Tok pos _ _) -> maybe True
                   (\p -> sourceName p /= sourceName pos || pos < p) nxtpos) inp
   return (result, raw)
+
+keyval :: PandocMonad m => LP m (Text, Text)
+keyval = try $ do
+  Tok _ Word key <- satisfyTok isWordTok
+  sp
+  val <- option mempty $ do
+           symbol '='
+           sp
+           (untokenize <$> braced) <|>
+             (mconcat <$> many1 (
+                 (untokenize . snd <$> withRaw braced)
+                 <|>
+                 (untokenize <$> many1
+                      (satisfyTok
+                         (\case
+                                Tok _ Symbol "]" -> False
+                                Tok _ Symbol "," -> False
+                                Tok _ Symbol "{" -> False
+                                Tok _ Symbol "}" -> False
+                                _                -> True)))))
+  optional (symbol ',')
+  sp
+  return (key, T.strip val)
+
+keyvals :: PandocMonad m => LP m [(Text, Text)]
+keyvals = try $ symbol '[' >> manyTill keyval (symbol ']') <* sp
+
+verbEnv :: PandocMonad m => Text -> LP m Text
+verbEnv name = withVerbatimMode $ do
+  optional blankline
+  res <- manyTill anyTok (end_ name)
+  return $ stripTrailingNewline
+         $ untokenize res
+
+-- Strip single final newline and any spaces following it.
+-- Input is unchanged if it doesn't end with newline +
+-- optional spaces.
+stripTrailingNewline :: Text -> Text
+stripTrailingNewline t =
+  let (b, e) = T.breakOnEnd "\n" t
+  in  if T.all (== ' ') e
+         then T.dropEnd 1 b
+         else t
+
+begin_ :: PandocMonad m => Text -> LP m ()
+begin_ t = try (do
+  controlSeq "begin"
+  spaces
+  txt <- untokenize <$> braced
+  guard (t == txt)) <?> ("\\begin{" ++ T.unpack t ++ "}")
+
+end_ :: PandocMonad m => Text -> LP m ()
+end_ t = try (do
+  controlSeq "end"
+  spaces
+  txt <- untokenize <$> braced
+  guard $ t == txt) <?> ("\\end{" ++ T.unpack t ++ "}")
+
+getRawCommand :: PandocMonad m => Text -> Text -> LP m Text
+getRawCommand name txt = do
+  (_, rawargs) <- withRaw $
+      case name of
+           "write" -> do
+             void $ satisfyTok isWordTok -- digits
+             void braced
+           "titleformat" -> do
+             void braced
+             skipopts
+             void $ count 4 braced
+           "def" ->
+             void $ manyTill anyTok braced
+           _ | isFontSizeCommand name -> return ()
+             | otherwise -> do
+               skipopts
+               option "" (try dimenarg)
+               void $ many braced
+  return $ txt <> untokenize rawargs
+
+skipopts :: PandocMonad m => LP m ()
+skipopts = skipMany (void overlaySpecification <|> void rawopt)
+
+-- opts in angle brackets are used in beamer
+overlaySpecification :: PandocMonad m => LP m Text
+overlaySpecification = try $ do
+  symbol '<'
+  t <- untokenize <$> manyTill overlayTok (symbol '>')
+  -- see issue #3368
+  guard $ not (T.all isLetter t) ||
+          t `elem` ["beamer","presentation", "trans",
+                    "handout","article", "second"]
+  return $ "<" <> t <> ">"
+
+overlayTok :: PandocMonad m => LP m Tok
+overlayTok =
+  satisfyTok (\case
+                    Tok _ Word _       -> True
+                    Tok _ Spaces _     -> True
+                    Tok _ Symbol c     -> c `elem` ["-","+","@","|",":",","]
+                    _                  -> False)
+
+rawopt :: PandocMonad m => LP m Text
+rawopt = try $ do
+  sp
+  inner <- untokenize <$> bracketedToks
+  sp
+  return $ "[" <> inner <> "]"
+
+isFontSizeCommand :: Text -> Bool
+isFontSizeCommand "tiny" = True
+isFontSizeCommand "scriptsize" = True
+isFontSizeCommand "footnotesize" = True
+isFontSizeCommand "small" = True
+isFontSizeCommand "normalsize" = True
+isFontSizeCommand "large" = True
+isFontSizeCommand "Large" = True
+isFontSizeCommand "LARGE" = True
+isFontSizeCommand "huge" = True
+isFontSizeCommand "Huge" = True
+isFontSizeCommand _ = False
+

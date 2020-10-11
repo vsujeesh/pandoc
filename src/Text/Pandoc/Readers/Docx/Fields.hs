@@ -1,7 +1,7 @@
-{-# LANGUAGE NoImplicitPrelude #-}
+{-# LANGUAGE OverloadedStrings #-}
 {- |
    Module      : Text.Pandoc.Readers.Docx.Fields
-   Copyright   : Copyright (C) 2014-2019 Jesse Rosenthal
+   Copyright   : Copyright (C) 2014-2020 Jesse Rosenthal
    License     : GNU GPL, version 2 or above
 
    Maintainer  : Jesse Rosenthal <jrosenthal@jhu.edu>
@@ -15,17 +15,18 @@ module Text.Pandoc.Readers.Docx.Fields ( FieldInfo(..)
                                        , parseFieldInfo
                                        ) where
 
-import Prelude
+import Data.Functor (($>), void)
+import qualified Data.Text as T
 import Text.Parsec
-import Text.Parsec.String (Parser)
+import Text.Parsec.Text (Parser)
 
-type URL = String
+type URL = T.Text
 
 data FieldInfo = HyperlinkField URL
                | UnknownField
                deriving (Show)
 
-parseFieldInfo :: String -> Either ParseError FieldInfo
+parseFieldInfo :: T.Text -> Either ParseError FieldInfo
 parseFieldInfo = parse fieldInfo ""
 
 fieldInfo :: Parser FieldInfo
@@ -34,31 +35,31 @@ fieldInfo =
   <|>
   return UnknownField
 
-escapedQuote :: Parser String
-escapedQuote = string "\\\""
+escapedQuote :: Parser T.Text
+escapedQuote = string "\\\"" $> "\\\""
 
-inQuotes :: Parser String
+inQuotes :: Parser T.Text
 inQuotes =
-  (try escapedQuote) <|> (anyChar >>= (\c -> return [c]))
+  try escapedQuote <|> (T.singleton <$> anyChar)
 
-quotedString :: Parser String
+quotedString :: Parser T.Text
 quotedString = do
   char '"'
-  concat <$> manyTill inQuotes (try (char '"'))
+  T.concat <$> manyTill inQuotes (try (char '"'))
 
-unquotedString :: Parser String
-unquotedString = manyTill anyChar (try $ lookAhead space *> return () <|> eof)
+unquotedString :: Parser T.Text
+unquotedString = T.pack <$> manyTill anyChar (try $ void (lookAhead space) <|> eof)
 
-fieldArgument :: Parser String
+fieldArgument :: Parser T.Text
 fieldArgument = quotedString <|> unquotedString
 
 -- there are other switches, but this is the only one I've seen in the wild so far, so it's the first one I'll implement. See §17.16.5.25
-hyperlinkSwitch :: Parser (String, String)
+hyperlinkSwitch :: Parser (T.Text, T.Text)
 hyperlinkSwitch = do
   sw <- string "\\l"
   spaces
   farg <- fieldArgument
-  return (sw, farg)
+  return (T.pack sw, farg)
 
 hyperlink :: Parser URL
 hyperlink = do
@@ -68,6 +69,6 @@ hyperlink = do
   farg <- fieldArgument
   switches <- spaces *> many hyperlinkSwitch
   let url = case switches of
-              ("\\l", s) : _ -> farg ++ ('#': s)
+              ("\\l", s) : _ -> farg <> "#" <> s
               _              -> farg
   return url

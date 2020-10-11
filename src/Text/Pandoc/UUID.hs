@@ -1,7 +1,6 @@
-{-# LANGUAGE NoImplicitPrelude #-}
 {- |
    Module      : Text.Pandoc.UUID
-   Copyright   : Copyright (C) 2010-2019 John MacFarlane
+   Copyright   : Copyright (C) 2010-2020 John MacFarlane
    License     : GNU GPL, version 2 or above
 
    Maintainer  : John MacFarlane <jgm@berkeley.edu>
@@ -12,13 +11,13 @@ UUID generation using Version 4 (random method) described
 in RFC4122. See http://tools.ietf.org/html/rfc4122
 -}
 
-module Text.Pandoc.UUID ( UUID(..), getRandomUUID, getUUID ) where
+module Text.Pandoc.UUID ( UUID(..), getRandomUUID ) where
 
-import Prelude
 import Data.Bits (clearBit, setBit)
 import Data.Word
-import System.Random (RandomGen, getStdGen, randoms)
+import System.Random (RandomGen, randoms)
 import Text.Printf (printf)
+import Text.Pandoc.Class.PandocMonad
 
 data UUID = UUID Word8 Word8 Word8 Word8 Word8 Word8 Word8 Word8
                  Word8 Word8 Word8 Word8 Word8 Word8 Word8 Word8
@@ -58,5 +57,5 @@ getUUID gen =
          in  UUID a b c d e f g' h i' j k l m n o p
        _ -> error "not enough random numbers for UUID" -- should not happen
 
-getRandomUUID :: IO UUID
-getRandomUUID = getUUID <$> getStdGen
+getRandomUUID :: PandocMonad m => m UUID
+getRandomUUID = getUUID <$> newStdGen

@@ -2,7 +2,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {- |
    Module      : Tests.Readers.Markdown
-   Copyright   : © 2006-2019 John MacFarlane
+   Copyright   : © 2006-2020 John MacFarlane
    License     : GNU GPL, version 2 or above
 
    Maintainer  : John MacFarlane <jgm@berkeley.edu>
@@ -53,7 +53,8 @@ autolink :: String -> Inlines
 autolink = autolinkWith ("",["uri"],[])
 
 autolinkWith :: Attr -> String -> Inlines
-autolinkWith attr s = linkWith attr s "" (str s)
+autolinkWith attr s = linkWith attr s' "" (str s')
+  where s' = T.pack s
 
 bareLinkTests :: [(Text, Inlines)]
 bareLinkTests =
@@ -170,6 +171,53 @@ tests = [ testGroup "inline code"
             =?> para (code "*" <> space <> str "{.haskell" <> space <>
                       str ".special" <> space <> str "x=\"7\"}")
           ]
+        , testGroup "inline code in lists (regression tests for #6284)" $
+          let lists = [("ordered", "1. ", ol), ("bullet", "- ", ul)]
+              ol = orderedListWith (1, Decimal, Period)
+              ul = bulletList
+              items =
+                [ ("in text"                , ["If `(1) x`, then `2`"], [text "If " <> code "(1) x" <> text ", then " <> code "2"])
+                , ("at start"               , ["`#. x`"              ], [code "#. x"                                             ])
+                , ("at start"               , ["`- x`"               ], [code "- x"                                              ])
+                , ("after literal backticks", ["`x``#. x`"           ], [code "x``#. x"                                          ])
+                , ("after literal backticks", ["`x``- x`"            ], [code "x``- x"                                           ])
+                ]
+              lis = ["`text","y","x`"]
+              lis' = ["text","y","x"]
+              bldLsts w lsts txts
+                = let (res, res', f) =
+                         foldr (\((_, _, lt), lc) (acc, tacc, t) ->
+                             if lt [] == t []
+                             then (acc, lc : tacc, lt)
+                             else (join t tacc acc, [lc], lt))
+                           (mempty, [], mconcat)
+                           (zip lsts (map text txts))
+                      join t tacc acc = case tacc of
+                          [] -> acc
+                          [x] -> t [plain x] <> acc
+                          xs -> t (map w xs) <> acc
+                  in join f res' res
+          in ["code with list marker "<>mp<>" in " <> ln <> " list" =:
+              T.intercalate "\n" (map (lstr <>) istrs) =?> lbld (map plain iblds)
+              | (ln, lstr, lbld) <- lists, (mp, istrs, iblds) <- items]
+          <> [ "lists with newlines in backticks" =:
+               T.intercalate "\n" (zipWith (\i (_, lt, _) -> lt <> i) lis lsts)
+               =?> bldLsts plain lsts lis
+             | lsts <- [ [i, j, k] | i <- lists, j <- lists, k <- lists]
+             ]
+          <> [ "lists with newlines and indent in backticks" =:
+               T.intercalate ("\n" <> T.replicate 4 " ") (zipWith (\i (_, lt, _) -> lt <> i) lis lsts)
+               =?> let (_, _, f) = head lsts
+                   in f [plain $ code $ T.intercalate (T.replicate 5 " ") $ head lis' : zipWith (\i (_, lt, _) -> lt <> i) (tail lis') (tail lsts)]
+             | lsts <- [ [i, j, k] | i <- lists, j <- lists, k <- lists]
+             ]
+          <> [ "lists with blank lines and indent in backticks" =:
+               T.intercalate ("\n\n" <> T.replicate 4 " ") (zipWith (\i (_, lt, _) -> lt <> i) lis lsts)
+               <> "\n"
+               =?> let (_, _, f) = head lsts
+                   in f . pure $ (para . text $ head lis) <> bldLsts para (tail lsts) (tail lis)
+             | lsts <- [ [i, j, k] | i <- lists, j <- lists, k <- lists]
+             ]
         , testGroup "emph and strong"
           [ "two strongs in emph" =:
              "***a**b **c**d*" =?> para (emph (strong (str "a") <> str "b" <> space
@@ -423,7 +471,7 @@ tests = [ testGroup "inline code"
                         , citationPrefix  = []
                         , citationSuffix  = []
                         , citationMode    = AuthorInText
-                        , citationNoteNum = 0
+                        , citationNoteNum = 1
                         , citationHash    = 0
                         }
                 ] "@item1")
@@ -433,12 +481,12 @@ tests = [ testGroup "inline code"
                         , citationPrefix  = []
                         , citationSuffix  = []
                         , citationMode    = AuthorInText
-                        , citationNoteNum = 0
+                        , citationNoteNum = 1
                         , citationHash    = 0
                         }
                 ] "@1657:huyghens")
           ]
-        , let citation = cite [Citation "cita" [] [] AuthorInText 0 0] (str "@cita")
+        , let citation = cite [Citation "cita" [] [] AuthorInText 1 0] (str "@cita")
           in testGroup "footnote/link following citation" -- issue #2083
           [ "footnote" =:
               T.unlines [ "@cita[^note]"
@@ -475,7 +523,7 @@ tests = [ testGroup "inline code"
           , "regular citation" =:
               "@cita [foo]" =?>
               para (
-                cite [Citation "cita" [] [Str "foo"] AuthorInText 0 0]
+                cite [Citation "cita" [] [Str "foo"] AuthorInText 1 0]
                   (str "@cita" <> space <> str "[foo]")
               )
           ]

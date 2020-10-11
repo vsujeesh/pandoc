@@ -1,9 +1,10 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 {-# LANGUAGE LambdaCase           #-}
-{-# LANGUAGE NoImplicitPrelude    #-}
+{-# LANGUAGE OverloadedStrings    #-}
+{-# LANGUAGE ScopedTypeVariables  #-}
 {- |
    Module      : Text.Pandoc.Lua.Marshaling.Version
-   Copyright   : © 2019 Albert Krewinkel
+   Copyright   : © 2019-2020 Albert Krewinkel
    License     : GNU GPL, version 2 or above
 
    Maintainer  : Albert Krewinkel <tarleb+pandoc@moltkeplatz.de>
@@ -18,7 +19,7 @@ module Text.Pandoc.Lua.Marshaling.Version
   )
   where
 
-import Prelude
+import Data.Text (Text)
 import Data.Maybe (fromMaybe)
 import Data.Version (Version (..), makeVersion, parseVersion, showVersion)
 import Foreign.Lua (Lua, Optional (..), NumResults,
@@ -56,7 +57,7 @@ peekVersion idx = Lua.ltype idx >>= \case
     let parses = readP_to_S parseVersion versionStr
     case lastMay parses of
       Just (v, "") -> return v
-      _  -> Lua.throwException $ "could not parse as Version: " ++ versionStr
+      _  -> Lua.throwMessage $ "could not parse as Version: " ++ versionStr
 
   Lua.TypeUserdata ->
     reportValueOnFailure versionTypeName
@@ -70,7 +71,7 @@ peekVersion idx = Lua.ltype idx >>= \case
     makeVersion <$> Lua.peek idx
 
   _ ->
-    Lua.throwException "could not peek Version"
+    Lua.throwMessage "could not peek Version"
 
 instance Peekable Version where
   peek = peekVersion
@@ -103,7 +104,7 @@ __index v (AnyValue k) = do
       Lua.push (Lua.Optional versionPart)
       return 1
     Lua.TypeString -> do
-      str <- Lua.peek k
+      (str :: Text) <- Lua.peek k
       if str == "must_be_at_least"
         then 1 <$ Lua.pushHaskellFunction must_be_at_least
         else 1 <$ Lua.pushnil
@@ -151,4 +152,3 @@ must_be_at_least actual expected optMsg = do
       Lua.push (showVersion actual)
       Lua.call 3 1
       Lua.error
-

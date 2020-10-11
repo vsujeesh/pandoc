@@ -50,11 +50,15 @@ local utils = M.utils
 -- @param indices list of indices, starting with the most deeply nested
 -- @return newly created function
 -- @local
-function make_indexing_function(template, indices)
+function make_indexing_function(template, ...)
+  local indices = {...}
   local loadstring = loadstring or load
   local bracketed = {}
   for i = 1, #indices do
-    bracketed[i] = string.format('[%d]', indices[#indices - i + 1])
+    local idx = indices[#indices - i + 1]
+    bracketed[i] = type(idx) == 'number'
+      and string.format('[%d]', idx)
+      or string.format('.%s', idx)
   end
   local fnstr = string.format('return ' .. template, table.concat(bracketed))
   return assert(loadstring(fnstr))()
@@ -69,11 +73,16 @@ local function create_accessor_functions (fn_template, accessors)
   local res = {}
   function add_accessors(acc, ...)
     if type(acc) == 'string' then
-      res[acc] = make_indexing_function(fn_template, {...})
+      res[acc] = make_indexing_function(fn_template, ...)
     elseif type(acc) == 'table' and #acc == 0 and next(acc) then
+      -- Named substructure: the given names are accessed via the substructure,
+      -- but the accessors are also added to the result table, enabling direct
+      -- access from the parent element. Mainly used for `attr`.
       local name, substructure = next(acc)
-      res[name] = make_indexing_function(fn_template, {...})
-      add_accessors(substructure, ...)
+      res[name] = make_indexing_function(fn_template, ...)
+      for _, subname in ipairs(substructure) do
+        res[subname] = make_indexing_function(fn_template, subname, ...)
+      end
     else
       for i = 1, #(acc or {}) do
         add_accessors(acc[i], i, ...)
@@ -272,6 +281,35 @@ local function ensureDefinitionPairs (pair)
   return {inlines, blocks}
 end
 
+--- Split a string into it's words, using whitespace as separators.
+local function words (str)
+  local ws = {}
+  for w in str:gmatch("([^%s]+)") do ws[#ws + 1] = w end
+  return ws
+end
+
+--- Try hard to turn the arguments into an Attr object.
+local function ensureAttr(attr)
+  if type(attr) == 'table' then
+    if #attr > 0 then return M.Attr(table.unpack(attr)) end
+
+    -- assume HTML-like key-value pairs
+    local ident = attr.id or ''
+    local classes = words(attr.class or '')
+    local attributes = attr
+    attributes.id = nil
+    attributes.class = nil
+    return M.Attr(ident, classes, attributes)
+  elseif attr == nil then
+    return M.Attr()
+  elseif type(attr) == 'string' then
+    -- treat argument as ID
+    return M.Attr(attr)
+  end
+  -- print(arg, ...)
+  error('Could not convert to Attr')
+end
+
 ------------------------------------------------------------------------
 --- Pandoc Document
 -- @section document
@@ -402,7 +440,7 @@ M.BulletList = M.Block:create_constructor(
 -- @treturn     Block                   code block element
 M.CodeBlock = M.Block:create_constructor(
   "CodeBlock",
-  function(text, attr) return {c = {attr or M.Attr(), text}} end,
+  function(text, attr) return {c = {ensureAttr(attr), text}} end,
   {{attr = {"identifier", "classes", "attributes"}}, "text"}
 )
 
@@ -426,7 +464,7 @@ M.DefinitionList = M.Block:create_constructor(
 M.Div = M.Block:create_constructor(
   "Div",
   function(content, attr)
-    return {c = {attr or M.Attr(), ensureList(content)}}
+    return {c = {ensureAttr(attr), ensureList(content)}}
   end,
   {{attr = {"identifier", "classes", "attributes"}}, "content"}
 )
@@ -440,7 +478,7 @@ M.Div = M.Block:create_constructor(
 M.Header = M.Block:create_constructor(
   "Header",
   function(level, content, attr)
-    return {c = {level, attr or M.Attr(), ensureInlineList(content)}}
+    return {c = {level, ensureAttr(attr), ensureInlineList(content)}}
   end,
   {"level", {attr = {"identifier", "classes", "attributes"}}, "content"}
 )
@@ -518,26 +556,27 @@ M.RawBlock = M.Block:create_constructor(
 
 --- Creates a table element.
 -- @function Table
--- @tparam      {Inline,...} caption    table caption
--- @tparam      {AlignDefault|AlignLeft|AlignRight|AlignCenter,...} aligns alignments
--- @tparam      {int,...}    widths     column widths
--- @tparam      {Block,...}  headers    header row
--- @tparam      {{Block,...}} rows      table rows
--- @treturn     Block                   table element
+-- @tparam      Caption      caption    table caption
+-- @tparam      {ColSpec,...} colspecs  column alignments and widths
+-- @tparam      TableHead    head       table head
+-- @tparam      {TableBody,..} bodies   table bodies
+-- @treturn     TableFoot    foot       table foot
+-- @tparam[opt] Attr         attr       attributes
 M.Table = M.Block:create_constructor(
   "Table",
-  function(caption, aligns, widths, headers, rows)
+  function(caption, colspecs, head, bodies, foot, attr)
     return {
       c = {
-        ensureInlineList(caption),
-        List:new(aligns),
-        List:new(widths),
-        List:new(headers),
-        List:new(rows)
+        ensureAttr(attr),
+        caption,
+        List:new(colspecs),
+        head,
+        List:new(bodies),
+        foot
       }
     }
   end,
-  {"caption", "aligns", "widths", "headers", "rows"}
+  {"attr", "caption", "colspecs", "head", "bodies", "foot"}
 )
 
 
@@ -569,7 +608,7 @@ M.Cite = M.Inline:create_constructor(
 -- @treturn Inline code element
 M.Code = M.Inline:create_constructor(
   "Code",
-  function(text, attr) return {c = {attr or M.Attr(), text}} end,
+  function(text, attr) return {c = {ensureAttr(attr), text}} end,
   {{attr = {"identifier", "classes", "attributes"}}, "text"}
 )
 
@@ -594,8 +633,7 @@ M.Image = M.Inline:create_constructor(
   "Image",
   function(caption, src, title, attr)
     title = title or ""
-    attr = attr or M.Attr()
-    return {c = {attr, ensureInlineList(caption), {src, title}}}
+    return {c = {ensureAttr(attr), ensureInlineList(caption), {src, title}}}
   end,
   {{attr = {"identifier", "classes", "attributes"}}, "caption", {"src", "title"}}
 )
@@ -619,7 +657,7 @@ M.Link = M.Inline:create_constructor(
   "Link",
   function(content, target, title, attr)
     title = title or ""
-    attr = attr or M.Attr()
+    attr = ensureAttr(attr)
     return {c = {attr, ensureInlineList(content), {target, title}}}
   end,
   {{attr = {"identifier", "classes", "attributes"}}, "content", {"target", "title"}}
@@ -743,7 +781,7 @@ M.Space = M.Inline:create_constructor(
 M.Span = M.Inline:create_constructor(
   "Span",
   function(content, attr)
-    return {c = {attr or M.Attr(), ensureInlineList(content)}}
+    return {c = {ensureAttr(attr), ensureInlineList(content)}}
   end,
   {{attr = {"identifier", "classes", "attributes"}}, "content"}
 )
@@ -791,9 +829,19 @@ M.Subscript = M.Inline:create_constructor(
 --- Creates a Superscript inline element
 -- @function Superscript
 -- @tparam      {Inline,..} content     inline content
--- @treturn     Inline                  strong element
+-- @treturn     Inline                  superscript element
 M.Superscript = M.Inline:create_constructor(
   "Superscript",
+  function(content) return {c = ensureInlineList(content)} end,
+  "content"
+)
+
+--- Creates an Underline inline element
+-- @function Underline
+-- @tparam      {Inline,..} content     inline content
+-- @treturn     Inline                  underline element
+M.Underline = M.Inline:create_constructor(
+  "Underline",
   function(content) return {c = ensureInlineList(content)} end,
   "content"
 )
@@ -902,17 +950,21 @@ function M.Attr:new (identifier, classes, attributes)
   identifier = identifier or ''
   classes = ensureList(classes or {})
   attributes = setmetatable(to_alist(attributes or {}), AttributeList)
-  return {identifier, classes, attributes}
+  return setmetatable({identifier, classes, attributes}, self.behavior)
 end
 M.Attr.behavior.clone = M.types.clone.Attr
+M.Attr.behavior.tag = 'Attr'
 M.Attr.behavior._field_names = {identifier = 1, classes = 2, attributes = 3}
 M.Attr.behavior.__eq = utils.equals
 M.Attr.behavior.__index = function(t, k)
-  return rawget(t, getmetatable(t)._field_names[k]) or
+  return (k == 't' and t.tag) or
+    rawget(t, getmetatable(t)._field_names[k]) or
     getmetatable(t)[k]
 end
 M.Attr.behavior.__newindex = function(t, k, v)
-  if getmetatable(t)._field_names[k] then
+  if k == 'attributes' then
+    rawset(t, 3, setmetatable(to_alist(v or {}), AttributeList))
+  elseif getmetatable(t)._field_names[k] then
     rawset(t, getmetatable(t)._field_names[k], v)
   else
     rawset(t, k, v)
@@ -926,6 +978,24 @@ M.Attr.behavior.__pairs = function(t)
   end
   return make_next_function(fields), t, nil
 end
+
+-- Monkey-patch setters for `attr` fields to be more forgiving in the input that
+-- results in a valid Attr value.
+function augment_attr_setter (setters)
+  if setters.attr then
+    local orig = setters.attr
+    setters.attr = function(k, v)
+      orig(k, ensureAttr(v))
+    end
+  end
+end
+for _, blk in pairs(M.Block.constructor) do
+  augment_attr_setter(blk.behavior.setters)
+end
+for _, inln in pairs(M.Inline.constructor) do
+  augment_attr_setter(inln.behavior.setters)
+end
+
 
 -- Citation
 M.Citation = AstElement:make_subtype'Citation'
@@ -986,6 +1056,30 @@ M.ListAttributes.behavior.__pairs = function(t)
     fields[i] = name
   end
   return make_next_function(fields), t, nil
+end
+
+--
+-- Legacy and compatibility types
+--
+
+--- Creates a simple (old style) table element.
+-- @function SimpleTable
+-- @tparam      {Inline,...} caption    table caption
+-- @tparam      {AlignDefault|AlignLeft|AlignRight|AlignCenter,...} aligns alignments
+-- @tparam      {int,...}    widths     column widths
+-- @tparam      {Block,...}  headers    header row
+-- @tparam      {{Block,...}} rows      table rows
+-- @treturn     Block                   table element
+M.SimpleTable = function(caption, aligns, widths, headers, rows)
+  return {
+    caption = ensureInlineList(caption),
+    aligns = List:new(aligns),
+    widths = List:new(widths),
+    headers = List:new(headers),
+    rows = List:new(rows),
+    tag = "SimpleTable",
+    t = "SimpleTable",
+  }
 end
 
 

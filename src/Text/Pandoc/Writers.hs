@@ -1,10 +1,10 @@
-{-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE FlexibleInstances   #-}
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE OverloadedStrings   #-}
 {- |
    Module      : Text.Pandoc
-   Copyright   : Copyright (C) 2006-2019 John MacFarlane
+   Copyright   : Copyright (C) 2006-2020 John MacFarlane
    License     : GNU GPL, version 2 or above
 
    Maintainer  : John MacFarlane <jgm@berkeley.edu>
@@ -24,6 +24,7 @@ module Text.Pandoc.Writers
     , writeCommonMark
     , writeConTeXt
     , writeCustom
+    , writeCslJson
     , writeDZSlides
     , writeDocbook4
     , writeDocbook5
@@ -40,6 +41,9 @@ module Text.Pandoc.Writers
     , writeHtml5String
     , writeICML
     , writeJATS
+    , writeJatsArchiving
+    , writeJatsArticleAuthoring
+    , writeJatsPublishing
     , writeJSON
     , writeJira
     , writeLaTeX
@@ -69,18 +73,21 @@ module Text.Pandoc.Writers
     , getWriter
     ) where
 
-import Prelude
+import Control.Monad.Except (throwError)
+import Control.Monad (unless)
 import Data.Aeson
 import qualified Data.ByteString.Lazy as BL
-import Data.List (intercalate)
 import Data.Text (Text)
+import qualified Data.Text as T
 import Text.Pandoc.Class
 import Text.Pandoc.Definition
 import Text.Pandoc.Options
 import qualified Text.Pandoc.UTF8 as UTF8
+import Text.Pandoc.Error
 import Text.Pandoc.Writers.AsciiDoc
 import Text.Pandoc.Writers.CommonMark
 import Text.Pandoc.Writers.ConTeXt
+import Text.Pandoc.Writers.CslJson
 import Text.Pandoc.Writers.Custom
 import Text.Pandoc.Writers.Docbook
 import Text.Pandoc.Writers.Docx
@@ -118,10 +125,10 @@ data Writer m = TextWriter (WriterOptions -> Pandoc -> m Text)
               | ByteStringWriter (WriterOptions -> Pandoc -> m BL.ByteString)
 
 -- | Association list of formats and writers.
-writers :: PandocMonad m => [ ( String, Writer m) ]
+writers :: PandocMonad m => [ (Text, Writer m) ]
 writers = [
    ("native"       , TextWriter writeNative)
-  ,("json"         , TextWriter $ \o d -> writeJSON o d)
+  ,("json"         , TextWriter writeJSON)
   ,("docx"         , ByteStringWriter writeDocx)
   ,("odt"          , ByteStringWriter writeODT)
   ,("pptx"         , ByteStringWriter writePowerpoint)
@@ -142,7 +149,10 @@ writers = [
   ,("docbook"      , TextWriter writeDocbook5)
   ,("docbook4"     , TextWriter writeDocbook4)
   ,("docbook5"     , TextWriter writeDocbook5)
-  ,("jats"         , TextWriter writeJATS)
+  ,("jats"         , TextWriter writeJatsArchiving)
+  ,("jats_articleauthoring", TextWriter writeJatsArticleAuthoring)
+  ,("jats_publishing" , TextWriter writeJatsPublishing)
+  ,("jats_archiving" , TextWriter writeJatsArchiving)
   ,("jira"         , TextWriter writeJira)
   ,("opml"         , TextWriter writeOPML)
   ,("opendocument" , TextWriter writeOpenDocument)
@@ -170,21 +180,37 @@ writers = [
   ,("asciidoctor"  , TextWriter writeAsciiDoctor)
   ,("haddock"      , TextWriter writeHaddock)
   ,("commonmark"   , TextWriter writeCommonMark)
+  ,("commonmark_x" , TextWriter writeCommonMark)
   ,("gfm"          , TextWriter writeCommonMark)
   ,("tei"          , TextWriter writeTEI)
   ,("muse"         , TextWriter writeMuse)
+  ,("csljson"      , TextWriter writeCslJson)
   ]
 
 -- | Retrieve writer, extensions based on formatSpec (format+extensions).
-getWriter :: PandocMonad m => String -> Either String (Writer m, Extensions)
-getWriter s
-  = case parseFormatSpec s of
-         Left e  -> Left $ intercalate "\n" [m | Message m <- errorMessages e]
-         Right (writerName, setExts) ->
-             case lookup writerName writers of
-                     Nothing -> Left $ "Unknown writer: " ++ writerName
-                     Just r -> Right (r, setExts $
-                                  getDefaultExtensions writerName)
+getWriter :: PandocMonad m => Text -> m (Writer m, Extensions)
+getWriter s =
+  case parseFormatSpec s of
+        Left e  -> throwError $ PandocAppError
+                    $ T.intercalate "\n" [T.pack m | Message m <- errorMessages e]
+        Right (writerName, extsToEnable, extsToDisable) ->
+           case lookup writerName writers of
+                   Nothing  -> throwError $
+                                 PandocUnknownWriterError writerName
+                   Just  w  -> do
+                     let allExts = getAllExtensions writerName
+                     let exts = foldr disableExtension
+                           (foldr enableExtension
+                             (getDefaultExtensions writerName)
+                                   extsToEnable) extsToDisable
+                     mapM_ (\ext ->
+                              unless (extensionEnabled ext allExts) $
+                                throwError $
+                                   PandocUnsupportedExtensionError
+                                   (T.drop 4 $ T.pack $ show ext) writerName)
+                          (extsToEnable ++ extsToDisable)
+                     return (w, exts)
+
 
 writeJSON :: PandocMonad m => WriterOptions -> Pandoc -> m Text
 writeJSON _ = return . UTF8.toText . BL.toStrict . encode

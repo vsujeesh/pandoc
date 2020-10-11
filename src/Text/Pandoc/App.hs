@@ -1,9 +1,9 @@
-{-# LANGUAGE NoImplicitPrelude #-}
+{-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE CPP                 #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {- |
    Module      : Text.Pandoc.App
-   Copyright   : Copyright (C) 2006-2019 John MacFarlane
+   Copyright   : Copyright (C) 2006-2020 John MacFarlane
    License     : GNU GPL, version 2 or above
 
    Maintainer  : John MacFarlane <jgm@berkeley@edu>
@@ -22,7 +22,6 @@ module Text.Pandoc.App (
           , options
           , applyFilters
           ) where
-import Prelude
 import qualified Control.Exception as E
 import Control.Monad
 import Control.Monad.Trans
@@ -46,24 +45,25 @@ import System.IO (nativeNewline, stdout)
 import qualified System.IO as IO (Newline (..))
 import Text.Pandoc
 import Text.Pandoc.App.FormatHeuristics (formatFromFilePaths)
-import Text.Pandoc.App.Opt (Opt (..), LineEnding (..), defaultOpts)
+import Text.Pandoc.App.Opt (Opt (..), LineEnding (..), defaultOpts,
+                            IpynbOutput (..) )
 import Text.Pandoc.App.CommandLineOptions (parseOptions, options)
 import Text.Pandoc.App.OutputSettings (OutputSettings (..), optToOutputSettings)
 import Text.Pandoc.BCP47 (Lang (..), parseBCP47)
-import Text.Pandoc.Builder (setMeta, deleteMeta)
+import Text.Pandoc.Builder (setMeta)
 import Text.Pandoc.Filter (Filter (JSONFilter, LuaFilter), applyFilters)
 import Text.Pandoc.PDF (makePDF)
-import Text.Pandoc.Readers.Markdown (yamlToMeta)
 import Text.Pandoc.SelfContained (makeDataURI, makeSelfContained)
 import Text.Pandoc.Shared (eastAsianLineBreakFilter, stripEmptyParagraphs,
          headerShift, isURI, tabFilter, uriPathToPath, filterIpynbOutput,
-         defaultUserDataDirs)
+         defaultUserDataDirs, tshow, findM)
+import Text.Pandoc.Writers.Shared (lookupMetaString)
+import Text.Pandoc.Readers.Markdown (yamlToMeta)
 import qualified Text.Pandoc.UTF8 as UTF8
 #ifndef _WINDOWS
 import System.Posix.IO (stdOutput)
 import System.Posix.Terminal (queryTerminal)
 #endif
-
 
 convertWithOpts :: Opt -> IO ()
 convertWithOpts opts = do
@@ -73,33 +73,17 @@ convertWithOpts opts = do
 
   when (optDumpArgs opts) $
     do UTF8.hPutStrLn stdout outputFile
-       mapM_ (UTF8.hPutStrLn stdout) (optInputFiles opts)
+       mapM_ (UTF8.hPutStrLn stdout) (fromMaybe ["-"] $ optInputFiles opts)
        exitSuccess
 
-  let isPandocCiteproc (JSONFilter f) = takeBaseName f == "pandoc-citeproc"
-      isPandocCiteproc _              = False
-  -- --bibliography implies -F pandoc-citeproc for backwards compatibility:
-  let needsCiteproc = isJust (lookup "bibliography" (optMetadata opts)) &&
-                      optCiteMethod opts `notElem` [Natbib, Biblatex] &&
-                      all (not . isPandocCiteproc) filters
-  let filters' = if needsCiteproc then JSONFilter "pandoc-citeproc" : filters
-                                  else filters
-
   let sources = case optInputFiles opts of
-                     []  -> ["-"]
-                     xs | optIgnoreArgs opts -> ["-"]
-                        | otherwise  -> xs
+                     Just xs | not (optIgnoreArgs opts) -> xs
+                     _ -> ["-"]
 
   datadir <- case optDataDir opts of
                   Nothing   -> do
                     ds <- defaultUserDataDirs
-                    let selectUserDataDir [] = return Nothing
-                        selectUserDataDir (dir:dirs) = do
-                              exists <- doesDirectoryExist dir
-                              if exists
-                                 then return (Just dir)
-                                 else selectUserDataDir dirs
-                    selectUserDataDir ds
+                    findM doesDirectoryExist ds
                   Just _    -> return $ optDataDir opts
 
   let runIO' :: PandocIO a -> IO a
@@ -130,33 +114,34 @@ convertWithOpts opts = do
 
   runIO' $ do
     setUserDataDir datadir
-    setInputFiles (optInputFiles opts)
+    setResourcePath (optResourcePath opts)
+
+    setInputFiles (fromMaybe ["-"] (optInputFiles opts))
     setOutputFile (optOutputFile opts)
 
     -- assign reader and writer based on options and filenames
-    readerName <- case optReader opts of
+    readerName <- case optFrom opts of
                        Just f  -> return f
                        Nothing -> case formatFromFilePaths sources of
                            Just f' -> return f'
                            Nothing | sources == ["-"] -> return "markdown"
-                                   | any isURI sources -> return "html"
+                                   | any (isURI . T.pack) sources -> return "html"
                                    | otherwise -> do
-                             report $ UnknownExtensions
-                                 (map takeExtension sources) "markdown"
+                             report $ CouldNotDeduceFormat
+                                 (map (T.pack . takeExtension) sources) "markdown"
                              return "markdown"
 
     let pdfOutput = map toLower (takeExtension outputFile) == ".pdf"
 
-    (reader, readerExts) <-
-             case getReader readerName of
-                  Right (r, es) -> return (r :: Reader PandocIO, es)
-                  Left e   -> throwError $ PandocAppError e'
-                    where e' = case readerName of
-                                    "pdf" -> e ++
-                                       "\nPandoc can convert to PDF, but not from PDF."
-                                    "doc" -> e ++
-                                       "\nPandoc can convert from DOCX, but not from DOC.\nTry using Word to save your DOC file as DOCX, and convert that with pandoc."
-                                    _ -> e
+    when (pdfOutput && readerName == "latex") $
+      case optInputFiles opts of
+        Just (inputFile:_) -> report $ UnusualConversion $ T.pack $
+          "to convert a .tex file to PDF, you get better results by using pdflatex "
+            <> "(or lualatex or xelatex) directly, try `pdflatex " <> inputFile
+            <> "` instead of `pandoc " <> inputFile <> " -o " <> outputFile <> "`."
+        _ -> return ()
+
+    (reader :: Reader PandocIO, readerExts) <- getReader readerName
 
     let convertTabs = tabFilter (if optPreserveTabs opts ||
                                       readerName == "t2t" ||
@@ -176,40 +161,49 @@ convertWithOpts opts = do
     let writerName = outputWriterName outputSettings
     let writerOptions = outputWriterOptions outputSettings
 
-    let standalone = optStandalone opts || not (isTextFormat format) || pdfOutput
+    let bibOutput = writerName == "bibtex" ||
+                    writerName == "biblatex" ||
+                    writerName == "csljson"
+
+    let standalone = optStandalone opts ||
+                     not (isTextFormat format) ||
+                     pdfOutput ||
+                     bibOutput
 
     -- We don't want to send output to the terminal if the user
     -- does 'pandoc -t docx input.txt'; though we allow them to
     -- force this with '-o -'.  On posix systems, we detect
     -- when stdout is being piped and allow output to stdout
     -- in that case, but on Windows we can't.
-    when (not (isTextFormat format) && istty && isNothing ( optOutputFile opts)) $
+    when ((pdfOutput || not (isTextFormat format)) &&
+             istty && isNothing ( optOutputFile opts)) $
       throwError $ PandocAppError $
-              "Cannot write " ++ format ++ " output to terminal.\n" ++
-              "Specify an output file using the -o option, or " ++
+              "Cannot write " <> format <> " output to terminal.\n" <>
+              "Specify an output file using the -o option, or " <>
               "use '-o -' to force output to stdout."
 
 
-    abbrevs <- Set.fromList . filter (not . null) . lines <$>
+    abbrevs <- Set.fromList . filter (not . T.null) . T.lines . UTF8.toText <$>
                case optAbbreviations opts of
-                    Nothing -> UTF8.toString <$> readDataFile "abbreviations"
-                    Just f  -> UTF8.toString <$> readFileStrict f
+                    Nothing -> readDataFile "abbreviations"
+                    Just f  -> readFileStrict f
 
     metadata <- if format == "jats" &&
-                   isNothing (lookup "csl" (optMetadata opts)) &&
-                   isNothing (lookup "citation-style" (optMetadata opts))
+                   isNothing (lookupMeta "csl" (optMetadata opts)) &&
+                   isNothing (lookupMeta "citation-style"
+                                               (optMetadata opts))
                    then do
                      jatsCSL <- readDataFile "jats.csl"
                      let jatsEncoded = makeDataURI
                                          ("application/xml", jatsCSL)
-                     return $ ("csl", jatsEncoded) : optMetadata opts
+                     return $ setMeta "csl" jatsEncoded $ optMetadata opts
                    else return $ optMetadata opts
 
-    case lookup "lang" (optMetadata opts) of
-           Just l  -> case parseBCP47 l of
-                           Left _   -> return ()
+    case lookupMetaString "lang" (optMetadata opts) of
+           ""      -> setTranslations $ Lang "en" "" "US" []
+           l       -> case parseBCP47 l of
+                           Left _   -> report $ InvalidLang l
                            Right l' -> setTranslations l'
-           Nothing -> setTranslations $ Lang "en" "" "US" []
 
     let readerOpts = def{
             readerStandalone = standalone
@@ -225,14 +219,15 @@ convertWithOpts opts = do
           }
 
     metadataFromFile <-
-      case optMetadataFile opts of
+      case optMetadataFiles opts of
         []    -> return mempty
-        paths -> mapM readFileLazy paths >>= mapM (yamlToMeta readerOpts)
-                   >>= return . (foldr1 (<>))
+        paths -> mconcat <$>
+           mapM (\path -> do raw <- readFileLazy path
+                             yamlToMeta readerOpts (Just path) raw) paths
 
-    let transforms = (case optBaseHeaderLevel opts of
-                          x | x > 1     -> (headerShift (x - 1) :)
-                            | otherwise -> id) .
+    let transforms = (case optShiftHeadingLevelBy opts of
+                          0             -> id
+                          x             -> (headerShift x :)) .
                      (if optStripEmptyParagraphs opts
                          then (stripEmptyParagraphs :)
                          else id) .
@@ -244,17 +239,16 @@ convertWithOpts opts = do
                          then (eastAsianLineBreakFilter :)
                          else id) .
                      (case optIpynbOutput opts of
-                       "all"    -> id
-                       "none"   -> (filterIpynbOutput Nothing :)
-                       "best"   -> (filterIpynbOutput (Just $
+                       IpynbOutputAll  -> id
+                       IpynbOutputNone -> (filterIpynbOutput Nothing :)
+                       IpynbOutputBest -> (filterIpynbOutput (Just $
                                      if htmlFormat format
                                         then Format "html"
                                         else
                                           case format of
                                             "latex"  -> Format "latex"
                                             "beamer" -> Format "latex"
-                                            _        -> Format format) :)
-                       _  -> id)  -- should not happen
+                                            _        -> Format format) :))
                      $ []
 
     let sourceToDoc :: [FilePath] -> PandocIO Pandoc
@@ -273,17 +267,25 @@ convertWithOpts opts = do
           writerName == "markdown_github") $
       report $ Deprecated "markdown_github" "Use gfm instead."
 
-    setResourcePath (optResourcePath opts)
     mapM_ (uncurry setRequestHeader) (optRequestHeaders opts)
+
+    setNoCheckCertificate (optNoCheckCertificate opts)
+
+    let isPandocCiteproc (JSONFilter f) = takeBaseName f == "pandoc-citeproc"
+        isPandocCiteproc _              = False
+
+    when (any isPandocCiteproc filters) $
+      report $ Deprecated "pandoc-citeproc filter"
+               "Use --citeproc instead."
 
     doc <- sourceToDoc sources >>=
               (   (if isJust (optExtractMedia opts)
                       then fillMediaBag
                       else return)
-              >=> return . addNonPresentMetadata metadataFromFile
-              >=> return . addMetadata metadata
+              >=> return . adjustMetadata (metadataFromFile <>)
+              >=> return . adjustMetadata (<> metadata)
               >=> applyTransforms transforms
-              >=> applyFilters readerOpts filters' [format]
+              >=> applyFilters readerOpts filters [T.unpack format]
               >=> maybe return extractMedia (optExtractMedia opts)
               )
 
@@ -291,12 +293,12 @@ convertWithOpts opts = do
       ByteStringWriter f -> f writerOptions doc >>= writeFnBinary outputFile
       TextWriter f -> case outputPdfProgram outputSettings of
         Just pdfProg -> do
-                res <- makePDF pdfProg (optPdfEngineArgs opts) f
+                res <- makePDF pdfProg (optPdfEngineOpts opts) f
                         writerOptions doc
                 case res of
                      Right pdf -> writeFnBinary outputFile pdf
                      Left err' -> throwError $ PandocPDFError $
-                                     TL.unpack (TE.decodeUtf8With TE.lenientDecode err')
+                                     TL.toStrict (TE.decodeUtf8With TE.lenientDecode err')
 
         Nothing -> do
                 let ensureNl t
@@ -306,47 +308,20 @@ convertWithOpts opts = do
                 output <- ensureNl <$> f writerOptions doc
                 writerFn eol outputFile =<<
                   if optSelfContained opts && htmlFormat format
-                     -- TODO not maximally efficient; change type
-                     -- of makeSelfContained so it works w/ Text
-                     then T.pack <$> makeSelfContained (T.unpack output)
+                     then makeSelfContained output
                      else return output
 
 type Transform = Pandoc -> Pandoc
 
-htmlFormat :: String -> Bool
+htmlFormat :: Text -> Bool
 htmlFormat = (`elem` ["html","html4","html5","s5","slidy",
                       "slideous","dzslides","revealjs"])
 
-isTextFormat :: String -> Bool
+isTextFormat :: Text -> Bool
 isTextFormat s = s `notElem` ["odt","docx","epub2","epub3","epub","pptx"]
 
-addNonPresentMetadata :: Text.Pandoc.Meta -> Pandoc -> Pandoc
-addNonPresentMetadata newmeta (Pandoc meta bs) = Pandoc (meta <> newmeta) bs
-
-addMetadata :: [(String, String)] -> Pandoc -> Pandoc
-addMetadata kvs pdc = foldr addMeta (removeMetaKeys kvs pdc) kvs
-
-addMeta :: (String, String) -> Pandoc -> Pandoc
-addMeta (k, v) (Pandoc meta bs) = Pandoc meta' bs
-  where meta' = case lookupMeta k meta of
-                      Nothing -> setMeta k v' meta
-                      Just (MetaList xs) ->
-                                 setMeta k (MetaList (xs ++ [v'])) meta
-                      Just x  -> setMeta k (MetaList [x, v']) meta
-        v' = readMetaValue v
-
-removeMetaKeys :: [(String,String)] -> Pandoc -> Pandoc
-removeMetaKeys kvs pdc = foldr (deleteMeta . fst) pdc kvs
-
-readMetaValue :: String -> MetaValue
-readMetaValue s
-  | s == "true"  = MetaBool True
-  | s == "True"  = MetaBool True
-  | s == "TRUE"  = MetaBool True
-  | s == "false" = MetaBool False
-  | s == "False" = MetaBool False
-  | s == "FALSE" = MetaBool False
-  | otherwise    = MetaString s
+adjustMetadata :: (Meta -> Meta) -> Pandoc -> Pandoc
+adjustMetadata f (Pandoc meta bs) = Pandoc (f meta) bs
 
 -- Transformations of a Pandoc document post-parsing:
 
@@ -358,7 +333,7 @@ readSource src = case parseURI src of
                       Just u | uriScheme u `elem` ["http:","https:"] ->
                                  readURI src
                              | uriScheme u == "file:" -> liftIO $
-                                 readTextFile (uriPathToPath $ uriPath u)
+                                 readTextFile (uriPathToPath $ T.pack $ uriPath u)
                       _       -> liftIO $ readTextFile src
   where readTextFile :: FilePath -> IO Text
         readTextFile fp = do
@@ -366,16 +341,16 @@ readSource src = case parseURI src of
                    then BS.getContents
                    else BS.readFile fp
           E.catch (return $! UTF8.toText bs)
-             (\e -> case e of
-                         TSE.DecodeError _ (Just w) -> do
+             (\e -> E.throwIO $ case e of
+                         TSE.DecodeError _ (Just w) ->
                            case BS.elemIndex w bs of
-                             Just offset -> E.throwIO $
-                                  PandocUTF8DecodingError fp offset w
-                             _ -> E.throwIO $ PandocUTF8DecodingError fp 0 w
-                         _ -> E.throwIO $ PandocAppError (show e))
+                             Just offset ->
+                                  PandocUTF8DecodingError (T.pack fp) offset w
+                             _ -> PandocUTF8DecodingError (T.pack fp) 0 w
+                         _ -> PandocAppError (tshow e))
 
 readURI :: FilePath -> PandocIO Text
-readURI src = UTF8.toText . fst <$> openURL src
+readURI src = UTF8.toText . fst <$> openURL (T.pack src)
 
 readFile' :: MonadIO m => FilePath -> m BL.ByteString
 readFile' "-" = liftIO BL.getContents

@@ -1,4 +1,3 @@
-{-# LANGUAGE NoImplicitPrelude #-}
 {- |
    Module      : Text.Pandoc.Readers.Odt.Arrows.Utils
    Copyright   : Copyright (C) 2015 Martin Linnemann
@@ -22,7 +21,6 @@ with an equivalent return value.
 -- We export everything
 module Text.Pandoc.Readers.Odt.Arrows.Utils where
 
-import Prelude
 import Control.Arrow
 import Control.Monad (join)
 
@@ -183,14 +181,14 @@ a >>?! f = a >>> right f
           => FallibleArrow a x f (b,b')
           -> (b -> b' -> c)
           -> FallibleArrow a x f c
-a >>?% f = a >>?^ (uncurry f)
+a >>?% f = a >>?^ uncurry f
 
 ---
 (^>>?%) :: (ArrowChoice a)
           => (x -> Either f (b,b'))
           -> (b -> b' -> c)
           -> FallibleArrow a x f c
-a ^>>?% f = arr a >>?^ (uncurry f)
+a ^>>?% f = arr a >>?^ uncurry f
 
 ---
 (>>?%?) :: (ArrowChoice a)

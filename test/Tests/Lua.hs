@@ -1,8 +1,9 @@
 {-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {- |
    Module      : Tests.Lua
-   Copyright   : © 2017-2019 Albert Krewinkel
+   Copyright   : © 2017-2020 Albert Krewinkel
    License     : GNU GPL, version 2 or above
 
    Maintainer  : Albert Krewinkel <albert@zeitkraut.de>
@@ -23,17 +24,21 @@ import Text.Pandoc.Arbitrary ()
 import Text.Pandoc.Builder (bulletList, definitionList, displayMath, divWith,
                             doc, doubleQuoted, emph, header, lineBlock,
                             linebreak, math, orderedList, para, plain, rawBlock,
-                            singleQuoted, space, str, strong)
+                            singleQuoted, space, str, strong,
+                            HasMeta (setMeta))
 import Text.Pandoc.Class (runIOorExplode, setUserDataDir)
 import Text.Pandoc.Definition (Block (BlockQuote, Div, Para), Inline (Emph, Str),
                                Attr, Meta, Pandoc, pandocTypesVersion)
+import Text.Pandoc.Error (PandocError (PandocLuaError))
 import Text.Pandoc.Filter (Filter (LuaFilter), applyFilters)
 import Text.Pandoc.Lua (runLua)
 import Text.Pandoc.Options (def)
 import Text.Pandoc.Shared (pandocVersion)
 
+import qualified Control.Monad.Catch as Catch
 import qualified Foreign.Lua as Lua
-import qualified Data.ByteString.Char8 as BS
+import qualified Data.Text as T
+import qualified Data.Text.Encoding as TE
 
 tests :: [TestTree]
 tests = map (localOption (QuickCheckTests 20))
@@ -128,22 +133,50 @@ tests = map (localOption (QuickCheckTests 20))
       (doc $ divWith ("", [], kv_before) (para "nil"))
       (doc $ divWith ("", [], kv_after) (para "nil"))
 
+  , testCase "Filter list of inlines" $
+      assertFilterConversion "List of inlines"
+      "inlines-filter.lua"
+      (doc $ para ("Hello," <> linebreak <> "World! Wassup?"))
+      (doc $ para "Hello, World! Wassup?")
+
+  , testCase "Filter list of blocks" $
+      assertFilterConversion "List of blocks"
+      "blocks-filter.lua"
+      (doc $ para "one." <> para "two." <> para "three.")
+      (doc $ plain "3")
+
+  , testCase "Filter Meta" $
+    let setMetaBefore = setMeta "old" ("old" :: T.Text)
+                      . setMeta "bool" False
+        setMetaAfter  = setMeta "new" ("new" :: T.Text)
+                      . setMeta "bool" True
+    in assertFilterConversion "Meta filtering"
+      "meta.lua"
+      (setMetaBefore . doc $ mempty)
+      (setMetaAfter . doc $ mempty)
+
   , testCase "Script filename is set" $
     assertFilterConversion "unexpected script name"
       "script-name.lua"
       (doc $ para "ignored")
-      (doc $ para (str $ "lua" </> "script-name.lua"))
+      (doc $ para (str $ T.pack $ "lua" </> "script-name.lua"))
 
   , testCase "Pandoc version is set" . runLuaTest $ do
       Lua.getglobal "PANDOC_VERSION"
       Lua.liftIO .
-        assertEqual "pandoc version is wrong" (BS.pack pandocVersion)
+        assertEqual "pandoc version is wrong" (TE.encodeUtf8 pandocVersion)
         =<< Lua.tostring' Lua.stackTop
 
   , testCase "Pandoc types version is set" . runLuaTest $ do
       Lua.getglobal "PANDOC_API_VERSION"
       Lua.liftIO . assertEqual "pandoc-types version is wrong" pandocTypesVersion
         =<< Lua.peek Lua.stackTop
+
+  , testCase "require file" $
+    assertFilterConversion "requiring file failed"
+      "require-file.lua"
+      (doc $ para "ignored")
+      (doc $ para (str . T.pack $ "lua" </> "require-file.lua"))
 
   , testCase "Allow singleton inline in constructors" . runLuaTest $ do
       Lua.liftIO . assertEqual "Not the exptected Emph" (Emph [Str "test"])
@@ -173,12 +206,13 @@ tests = map (localOption (QuickCheckTests 20))
 
   , testCase "informative error messages" . runLuaTest $ do
       Lua.pushboolean True
-      err <- Lua.peekEither Lua.stackTop
-      case (err :: Either String Pandoc) of
-        Left msg -> do
+      eitherPandoc <- Catch.try (Lua.peek Lua.stackTop :: Lua.Lua Pandoc)
+      case eitherPandoc of
+        Left (PandocLuaError msg) -> do
           let expectedMsg = "Could not get Pandoc value: "
                             <> "table expected, got boolean"
           Lua.liftIO $ assertEqual "unexpected error message" expectedMsg msg
+        Left e -> error ("Expected a Lua error, but got " <> show e)
         Right _ -> error "Getting a Pandoc element from a bool should fail."
   ]
 
@@ -199,10 +233,7 @@ roundtripEqual x = (x ==) <$> roundtripped
     size <- Lua.gettop
     when (size - oldSize /= 1) $
       error ("not exactly one additional element on the stack: " ++ show size)
-    res <- Lua.peekEither (-1)
-    case res of
-      Left e -> error (show e)
-      Right y -> return y
+    Lua.peek (-1)
 
 runLuaTest :: Lua.Lua a -> IO a
 runLuaTest op = runIOorExplode $ do

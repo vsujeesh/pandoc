@@ -86,7 +86,7 @@ Pandoc (Meta {unMeta = fromList []})
  ,([Str "beer"],
    [[Plain [Str "fresh",Space,Str "and",Space,Str "bitter"]]])]
 ,Header 1 ("inline-markup",[],[]) [Str "Inline",Space,Str "Markup"]
-,Para [Str "This",Space,Str "is",Space,Emph [Str "emphasized"],Str ",",Space,Str "and",Space,Str "so",Space,Emph [Str "is",Space,Str "this"],Str ".",LineBreak,Str "This",Space,Str "is",Space,Strong [Str "strong"],Str ",",Space,Str "and",Space,Str "so",Space,Strong [Str "is",Space,Str "this"],Str ".",LineBreak,Str "This",Space,Str "is",Space,Span ("",["underline"],[]) [Str "inserted"],Str ",",Space,Str "and",Space,Str "this",Space,Str "is",Space,Strikeout [Str "deleted"],Str ".",LineBreak,Str "Hyphenated-words-are-ok,",Space,Str "as",Space,Str "well",Space,Str "as",Space,Str "strange_underscore_notation.",LineBreak,Str "A",Space,Link ("",[],[]) [Strong [Str "strong",Space,Str "link"]] ("http://www.foobar.com",""),Str "."]
+,Para [Str "This",Space,Str "is",Space,Emph [Str "emphasized"],Str ",",Space,Str "and",Space,Str "so",Space,Emph [Str "is",Space,Str "this"],Str ".",LineBreak,Str "This",Space,Str "is",Space,Strong [Str "strong"],Str ",",Space,Str "and",Space,Str "so",Space,Strong [Str "is",Space,Str "this"],Str ".",LineBreak,Str "This",Space,Str "is",Space,Underline [Str "inserted"],Str ",",Space,Str "and",Space,Str "this",Space,Str "is",Space,Strikeout [Str "deleted"],Str ".",LineBreak,Str "Hyphenated-words-are-ok,",Space,Str "as",Space,Str "well",Space,Str "as",Space,Str "strange_underscore_notation.",LineBreak,Str "A",Space,Link ("",[],[]) [Strong [Str "strong",Space,Str "link"]] ("http://www.foobar.com",""),Str "."]
 ,Para [Emph [Strong [Str "This",Space,Str "is",Space,Str "strong",Space,Str "and",Space,Str "em."]],LineBreak,Str "So",Space,Str "is",Space,Strong [Emph [Str "this"]],Space,Str "word",Space,Str "and",Space,Emph [Strong [Str "that",Space,Str "one"]],Str ".",LineBreak,Strikeout [Str "This",Space,Str "is",Space,Str "strikeout",Space,Str "and",Space,Strong [Str "strong"]]]
 ,Para [Str "Superscripts:",Space,Str "a",Superscript [Str "bc"],Str "d",Space,Str "a",Space,Superscript [Strong [Str "hello"]],Space,Str "a",Superscript [Str "hello",Space,Str "there"],Str ".",LineBreak,Str "Subscripts:",Space,Subscript [Str "here"],Space,Str "H",Space,Subscript [Str "2"],Str "O,",Space,Str "H",Space,Subscript [Str "23"],Str "O,",Space,Str "H",Space,Subscript [Str "many",Space,Str "of",Space,Str "them"],Str "O."]
 ,Para [Str "Dashes",Space,Str ":",Space,Str "How",Space,Str "cool",Space,Str "\8212",Space,Str "automatic",Space,Str "dashes."]
@@ -103,37 +103,85 @@ Pandoc (Meta {unMeta = fromList []})
 ,Header 1 ("tables",[],[]) [Str "Tables"]
 ,Para [Str "Textile",Space,Str "allows",Space,Str "tables",Space,Str "with",Space,Str "and",Space,Str "without",Space,Str "headers",Space,Str ":"]
 ,Header 2 ("without-headers",[],[]) [Str "Without",Space,Str "headers"]
-,Table [] [AlignDefault,AlignDefault,AlignDefault] [0.0,0.0,0.0]
- [[]
- ,[]
- ,[]]
- [[[Plain [Str "name"]]
-  ,[Plain [Str "age"]]
-  ,[Plain [Str "sex"]]]
- ,[[Plain [Str "joan"]]
-  ,[Plain [Str "24"]]
-  ,[Plain [Str "f"]]]
- ,[[Plain [Str "archie"]]
-  ,[Plain [Str "29"]]
-  ,[Plain [Str "m"]]]
- ,[[Plain [Str "bella"]]
-  ,[Plain [Str "45"]]
-  ,[Plain [Str "f"]]]]
+,Table ("",[],[]) (Caption Nothing
+ [])
+ [(AlignDefault,ColWidthDefault)
+ ,(AlignDefault,ColWidthDefault)
+ ,(AlignDefault,ColWidthDefault)]
+ (TableHead ("",[],[])
+ [])
+ [(TableBody ("",[],[]) (RowHeadColumns 0)
+  []
+  [Row ("",[],[])
+   [Cell ("",[],[]) AlignDefault (RowSpan 1) (ColSpan 1)
+    [Plain [Str "name"]]
+   ,Cell ("",[],[]) AlignDefault (RowSpan 1) (ColSpan 1)
+    [Plain [Str "age"]]
+   ,Cell ("",[],[]) AlignDefault (RowSpan 1) (ColSpan 1)
+    [Plain [Str "sex"]]]
+  ,Row ("",[],[])
+   [Cell ("",[],[]) AlignDefault (RowSpan 1) (ColSpan 1)
+    [Plain [Str "joan"]]
+   ,Cell ("",[],[]) AlignDefault (RowSpan 1) (ColSpan 1)
+    [Plain [Str "24"]]
+   ,Cell ("",[],[]) AlignDefault (RowSpan 1) (ColSpan 1)
+    [Plain [Str "f"]]]
+  ,Row ("",[],[])
+   [Cell ("",[],[]) AlignDefault (RowSpan 1) (ColSpan 1)
+    [Plain [Str "archie"]]
+   ,Cell ("",[],[]) AlignDefault (RowSpan 1) (ColSpan 1)
+    [Plain [Str "29"]]
+   ,Cell ("",[],[]) AlignDefault (RowSpan 1) (ColSpan 1)
+    [Plain [Str "m"]]]
+  ,Row ("",[],[])
+   [Cell ("",[],[]) AlignDefault (RowSpan 1) (ColSpan 1)
+    [Plain [Str "bella"]]
+   ,Cell ("",[],[]) AlignDefault (RowSpan 1) (ColSpan 1)
+    [Plain [Str "45"]]
+   ,Cell ("",[],[]) AlignDefault (RowSpan 1) (ColSpan 1)
+    [Plain [Str "f"]]]])]
+ (TableFoot ("",[],[])
+ [])
 ,Para [Str "and",Space,Str "some",Space,Str "text",Space,Str "following",Space,Str "\8230"]
 ,Header 2 ("with-headers",[],[]) [Str "With",Space,Str "headers"]
-,Table [] [AlignDefault,AlignDefault,AlignDefault] [0.0,0.0,0.0]
- [[Plain [Str "name"]]
- ,[Plain [Str "age"]]
- ,[Plain [Str "sex"]]]
- [[[Plain [Str "joan"]]
-  ,[Plain [Str "24"]]
-  ,[Plain [Str "f"]]]
- ,[[Plain [Str "archie"]]
-  ,[Plain [Str "29"]]
-  ,[Plain [Str "m"]]]
- ,[[Plain [Str "bella"]]
-  ,[Plain [Str "45"]]
-  ,[Plain [Str "f"]]]]
+,Table ("",[],[]) (Caption Nothing
+ [])
+ [(AlignDefault,ColWidthDefault)
+ ,(AlignDefault,ColWidthDefault)
+ ,(AlignDefault,ColWidthDefault)]
+ (TableHead ("",[],[])
+ [Row ("",[],[])
+  [Cell ("",[],[]) AlignDefault (RowSpan 1) (ColSpan 1)
+   [Plain [Str "name"]]
+  ,Cell ("",[],[]) AlignDefault (RowSpan 1) (ColSpan 1)
+   [Plain [Str "age"]]
+  ,Cell ("",[],[]) AlignDefault (RowSpan 1) (ColSpan 1)
+   [Plain [Str "sex"]]]])
+ [(TableBody ("",[],[]) (RowHeadColumns 0)
+  []
+  [Row ("",[],[])
+   [Cell ("",[],[]) AlignDefault (RowSpan 1) (ColSpan 1)
+    [Plain [Str "joan"]]
+   ,Cell ("",[],[]) AlignDefault (RowSpan 1) (ColSpan 1)
+    [Plain [Str "24"]]
+   ,Cell ("",[],[]) AlignDefault (RowSpan 1) (ColSpan 1)
+    [Plain [Str "f"]]]
+  ,Row ("",[],[])
+   [Cell ("",[],[]) AlignDefault (RowSpan 1) (ColSpan 1)
+    [Plain [Str "archie"]]
+   ,Cell ("",[],[]) AlignDefault (RowSpan 1) (ColSpan 1)
+    [Plain [Str "29"]]
+   ,Cell ("",[],[]) AlignDefault (RowSpan 1) (ColSpan 1)
+    [Plain [Str "m"]]]
+  ,Row ("",[],[])
+   [Cell ("",[],[]) AlignDefault (RowSpan 1) (ColSpan 1)
+    [Plain [Str "bella"]]
+   ,Cell ("",[],[]) AlignDefault (RowSpan 1) (ColSpan 1)
+    [Plain [Str "45"]]
+   ,Cell ("",[],[]) AlignDefault (RowSpan 1) (ColSpan 1)
+    [Plain [Str "f"]]]])]
+ (TableFoot ("",[],[])
+ [])
 ,Header 1 ("images",[],[]) [Str "Images"]
 ,Para [Str "Textile",Space,Str "inline",Space,Str "image",Space,Str "syntax,",Space,Str "like",LineBreak,Str "here",Space,Image ("",[],[]) [Str "this is the alt text"] ("this_is_an_image.png","this is the alt text"),LineBreak,Str "and",Space,Str "here",Space,Image ("",[],[]) [Str ""] ("this_is_an_image.png",""),Str "."]
 ,Header 1 ("attributes",[],[]) [Str "Attributes"]
@@ -143,16 +191,31 @@ Pandoc (Meta {unMeta = fromList []})
 ,Header 2 ("justified",[],[("lang","en"),("style","color:blue;text-align:justify;")]) [Str "Justified"]
 ,Para [Str "as",Space,Str "well",Space,Str "as",Space,Strong [Span ("",["foo"],[]) [Str "inline",Space,Str "attributes"]],Space,Str "of",Space,Span ("",[],[("style","color:red;")]) [Str "all",Space,Str "kind"]]
 ,Para [Str "and",Space,Str "paragraph",Space,Str "attributes,",Space,Str "and",Space,Str "table",Space,Str "attributes."]
-,Table [] [AlignDefault,AlignDefault,AlignDefault] [0.0,0.0,0.0]
- [[]
- ,[]
- ,[]]
- [[[Plain [Str "name"]]
-  ,[Plain [Str "age"]]
-  ,[Plain [Str "sex"]]]
- ,[[Plain [Str "joan"]]
-  ,[Plain [Str "24"]]
-  ,[Plain [Str "f"]]]]
+,Table ("",[],[]) (Caption Nothing
+ [])
+ [(AlignDefault,ColWidthDefault)
+ ,(AlignDefault,ColWidthDefault)
+ ,(AlignDefault,ColWidthDefault)]
+ (TableHead ("",[],[])
+ [])
+ [(TableBody ("",[],[]) (RowHeadColumns 0)
+  []
+  [Row ("",[],[])
+   [Cell ("",[],[]) AlignDefault (RowSpan 1) (ColSpan 1)
+    [Plain [Str "name"]]
+   ,Cell ("",[],[]) AlignDefault (RowSpan 1) (ColSpan 1)
+    [Plain [Str "age"]]
+   ,Cell ("",[],[]) AlignDefault (RowSpan 1) (ColSpan 1)
+    [Plain [Str "sex"]]]
+  ,Row ("",[],[])
+   [Cell ("",[],[]) AlignDefault (RowSpan 1) (ColSpan 1)
+    [Plain [Str "joan"]]
+   ,Cell ("",[],[]) AlignDefault (RowSpan 1) (ColSpan 1)
+    [Plain [Str "24"]]
+   ,Cell ("",[],[]) AlignDefault (RowSpan 1) (ColSpan 1)
+    [Plain [Str "f"]]]])]
+ (TableFoot ("",[],[])
+ [])
 ,Para [Emph [Str "(class#id)",Space,Str "emph"]]
 ,Para [Emph [Str "(no",Space,Str "class#id)",Space,Str "emph"]]
 ,Header 1 ("entities",[],[]) [Str "Entities"]

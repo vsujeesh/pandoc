@@ -1,10 +1,9 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE FlexibleInstances    #-}
-{-# LANGUAGE TypeSynonymInstances #-}
 {- |
    Module      : Tests.Helpers
-   Copyright   : © 2006-2019 John MacFarlane
+   Copyright   : © 2006-2020 John MacFarlane
    License     : GNU GPL, version 2 or above
 
    Maintainer  : John MacFarlane <jgm@berkeley@edu>
@@ -104,7 +103,7 @@ findPandoc = do
              -- cabalv1
              "test-pandoc" : "build" : ps
                -> joinPath (reverse ps) </> "build" </> "pandoc"
-             _ -> error $ "findPandoc: could not find pandoc executable"
+             _ -> error "findPandoc: could not find pandoc executable"
   let pandocPath = pandocDir </> "pandoc"
 #ifdef _WINDOWS
                              <.> "exe"
@@ -142,7 +141,7 @@ instance ToString Blocks where
   toString = unpack . purely (writeNative def) . toPandoc
 
 instance ToString Inlines where
-  toString = trimr . unpack . purely (writeNative def) . toPandoc
+  toString = unpack . trimr . purely (writeNative def) . toPandoc
 
 instance ToString String where
   toString = id

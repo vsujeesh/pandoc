@@ -2,7 +2,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {- |
    Module      : Tests.Readers.Org.Block
-   Copyright   : © 2014-2019 Albert Krewinkel
+   Copyright   : © 2014-2020 Albert Krewinkel
    License     : GNU GPL, version 2 or above
 
    Maintainer  : Albert Krewinkel <albert@zeitkraut.de>
@@ -73,12 +73,22 @@ tests =
       "----- em and en dash" =?>
       para "\8212\8211 em and en dash"
 
-  , "Comment Block" =:
+  , testGroup "Comments"
+    [ "Comment Block" =:
       T.unlines [ "#+BEGIN_COMMENT"
                 , "stuff"
                 , "bla"
                 , "#+END_COMMENT"] =?>
       (mempty::Blocks)
+
+    , "Comment line" =:
+      T.unlines [ "# this is a comment" ] =?>
+      (mempty :: Blocks)
+
+    , "Empty comment line" =:
+      T.unlines [ "  #" ] =?>
+      (mempty :: Blocks)
+    ]
 
   , testGroup "Blocks and fragments"
     [ "HTML block" =:
@@ -169,7 +179,7 @@ tests =
                 , "\\end{equation}"
                 ] =?>
       rawBlock "latex"
-      (unlines [ "\\begin{equation}"
+      (T.unlines [ "\\begin{equation}"
                , "X_i = \\begin{cases}"
                , "      G_{\\alpha(i)} & \\text{if }\\alpha(i-1) =" <>
                  " \\alpha(i)\\\\"

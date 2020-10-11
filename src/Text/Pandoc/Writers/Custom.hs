@@ -1,8 +1,8 @@
 {-# LANGUAGE FlexibleInstances  #-}
-{-# LANGUAGE NoImplicitPrelude  #-}
+{-# LANGUAGE OverloadedStrings  #-}
 {- |
    Module      : Text.Pandoc.Writers.Custom
-   Copyright   : Copyright (C) 2012-2019 John MacFarlane
+   Copyright   : Copyright (C) 2012-2020 John MacFarlane
    License     : GNU GPL, version 2 or above
 
    Maintainer  : John MacFarlane <jgm@berkeley.edu>
@@ -13,38 +13,35 @@ Conversion of 'Pandoc' documents to custom markup using
 a lua writer.
 -}
 module Text.Pandoc.Writers.Custom ( writeCustom ) where
-import Prelude
 import Control.Arrow ((***))
 import Control.Exception
 import Control.Monad (when)
-import Data.Char (toLower)
 import Data.List (intersperse)
 import qualified Data.Map as M
+import qualified Data.Text as T
 import Data.Text (Text, pack)
-import Data.Typeable
 import Foreign.Lua (Lua, Pushable)
-import Text.Pandoc.Class (PandocIO)
+import Text.DocLayout (render, literal)
+import Text.Pandoc.Class.PandocIO (PandocIO)
 import Text.Pandoc.Definition
-import Text.Pandoc.Lua (Global (..), LuaException (LuaException),
-                        runLua, setGlobals)
+import Text.Pandoc.Lua (Global (..), runLua, setGlobals)
 import Text.Pandoc.Lua.Util (addField, dofileWithTraceback)
 import Text.Pandoc.Options
 import Text.Pandoc.Templates (renderTemplate)
-import qualified Text.Pandoc.UTF8 as UTF8
 import Text.Pandoc.Writers.Shared
 
 import qualified Foreign.Lua as Lua
 
-attrToMap :: Attr -> M.Map String String
+attrToMap :: Attr -> M.Map T.Text T.Text
 attrToMap (id',classes,keyvals) = M.fromList
     $ ("id", id')
-    : ("class", unwords classes)
+    : ("class", T.unwords classes)
     : keyvals
 
 newtype Stringify a = Stringify a
 
 instance Pushable (Stringify Format) where
-  push (Stringify (Format f)) = Lua.push (map toLower f)
+  push (Stringify (Format f)) = Lua.push (T.toLower f)
 
 instance Pushable (Stringify [Inline]) where
   push (Stringify ils) = Lua.push =<< inlineListToCustom ils
@@ -81,11 +78,6 @@ instance (Pushable a, Pushable b) => Pushable (KeyValue a b) where
     Lua.push v
     Lua.rawset (Lua.nthFromTop 3)
 
-data PandocLuaException = PandocLuaException String
-    deriving (Show, Typeable)
-
-instance Exception PandocLuaException
-
 -- | Convert Pandoc to custom markup.
 writeCustom :: FilePath -> WriterOptions -> Pandoc -> PandocIO Text
 writeCustom luaFile opts doc@(Pandoc meta _) = do
@@ -97,21 +89,21 @@ writeCustom luaFile opts doc@(Pandoc meta _) = do
     stat <- dofileWithTraceback luaFile
     -- check for error in lua script (later we'll change the return type
     -- to handle this more gracefully):
-    when (stat /= Lua.OK) $
-      Lua.tostring' (-1) >>= throw . PandocLuaException . UTF8.toString
+    when (stat /= Lua.OK)
+      Lua.throwTopMessage
     rendered <- docToCustom opts doc
     context <- metaToContext opts
-               blockListToCustom
-               inlineListToCustom
+               (fmap (literal . pack) . blockListToCustom)
+               (fmap (literal . pack) . inlineListToCustom)
                meta
-    return (rendered, context)
-  let (body, context) = case res of
-        Left (LuaException msg) -> throw (PandocLuaException msg)
-        Right x -> x
-  return $ pack $
-    case writerTemplate opts of
-       Nothing  -> body
-       Just tpl -> renderTemplate tpl $ setField "body" body context
+    return (pack rendered, context)
+  case res of
+    Left msg -> throw msg
+    Right (body, context) -> return $
+      case writerTemplate opts of
+        Nothing  -> body
+        Just tpl -> render Nothing $
+                    renderTemplate tpl $ setField "body" body context
 
 docToCustom :: WriterOptions -> Pandoc -> Lua String
 docToCustom opts (Pandoc (Meta metamap) blocks) = do
@@ -148,8 +140,9 @@ blockToCustom (CodeBlock attr str) =
 blockToCustom (BlockQuote blocks) =
   Lua.callFunc "BlockQuote" (Stringify blocks)
 
-blockToCustom (Table capt aligns widths headers rows) =
-  let aligns' = map show aligns
+blockToCustom (Table _ blkCapt specs thead tbody tfoot) =
+  let (capt, aligns, widths, headers, rows) = toLegacyTable blkCapt specs thead tbody tfoot
+      aligns' = map show aligns
       capt' = Stringify capt
       headers' = map Stringify headers
       rows' = map (map Stringify) rows
@@ -192,6 +185,8 @@ inlineToCustom Space = Lua.callFunc "Space"
 inlineToCustom SoftBreak = Lua.callFunc "SoftBreak"
 
 inlineToCustom (Emph lst) = Lua.callFunc "Emph" (Stringify lst)
+
+inlineToCustom (Underline lst) = Lua.callFunc "Underline" (Stringify lst)
 
 inlineToCustom (Strong lst) = Lua.callFunc "Strong" (Stringify lst)
 

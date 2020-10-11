@@ -1,10 +1,9 @@
-{-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE CPP                        #-}
 {-# LANGUAGE DeriveDataTypeable         #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {- |
    Module      : Text.Pandoc.MediaBag
-   Copyright   : Copyright (C) 2014-2015, 2017–2019 John MacFarlane
+   Copyright   : Copyright (C) 2014-2015, 2017–2020 John MacFarlane
    License     : GNU GPL, version 2 or above
 
    Maintainer  : John MacFarlane <jgm@berkeley.edu>
@@ -22,7 +21,6 @@ module Text.Pandoc.MediaBag (
                      mediaDirectory,
                      mediaItems
                      ) where
-import Prelude
 import qualified Data.ByteString.Lazy as BL
 import Data.Data (Data)
 import qualified Data.Map as M
@@ -36,7 +34,7 @@ import Text.Pandoc.MIME (MimeType, getMimeTypeDef)
 -- mime types.  Note that a 'MediaBag' is a Monoid, so 'mempty'
 -- can be used for an empty 'MediaBag', and '<>' can be used to append
 -- two 'MediaBag's.
-newtype MediaBag = MediaBag (M.Map [String] (MimeType, BL.ByteString))
+newtype MediaBag = MediaBag (M.Map [FilePath] (MimeType, BL.ByteString))
         deriving (Semigroup, Monoid, Data, Typeable)
 
 instance Show MediaBag where
@@ -72,12 +70,12 @@ lookupMedia fp (MediaBag mediamap) = M.lookup (splitDirectories fp) mediamap
 
 -- | Get a list of the file paths stored in a 'MediaBag', with
 -- their corresponding mime types and the lengths in bytes of the contents.
-mediaDirectory :: MediaBag -> [(String, MimeType, Int)]
+mediaDirectory :: MediaBag -> [(FilePath, MimeType, Int)]
 mediaDirectory (MediaBag mediamap) =
   M.foldrWithKey (\fp (mime,contents) ->
       ((Posix.joinPath fp, mime, fromIntegral $ BL.length contents):)) [] mediamap
 
-mediaItems :: MediaBag -> [(String, MimeType, BL.ByteString)]
+mediaItems :: MediaBag -> [(FilePath, MimeType, BL.ByteString)]
 mediaItems (MediaBag mediamap) =
   M.foldrWithKey (\fp (mime,contents) ->
       ((Posix.joinPath fp, mime, contents):)) [] mediamap

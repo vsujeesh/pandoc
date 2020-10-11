@@ -1,7 +1,8 @@
 {-# LANGUAGE NoImplicitPrelude #-}
+{-# LANGUAGE OverloadedStrings #-}
 {- |
    Module      : Tests.Readers.Docx
-   Copyright   : © 2017-2019 Jesse Rosenthal, John MacFarlane
+   Copyright   : © 2017-2020 Jesse Rosenthal, John MacFarlane
    License     : GNU GPL, version 2 or above
 
    Maintainer  : Jesse Rosenthal <jrosenthal@jhu.edu>
@@ -32,7 +33,7 @@ import Text.Pandoc.UTF8 as UTF8
 -- tests. Since we do our own normalization, we want to make sure
 -- we're doing it right.
 
-data NoNormPandoc = NoNormPandoc {unNoNorm :: Pandoc}
+newtype NoNormPandoc = NoNormPandoc {unNoNorm :: Pandoc}
                  deriving Show
 
 noNorm :: Pandoc -> NoNormPandoc
@@ -79,7 +80,7 @@ testForWarningsWithOptsIO opts name docxFile expected = do
   df <- B.readFile docxFile
   logs <-  runIOorExplode $ setVerbosity ERROR >> readDocx opts df >> P.getLog
   let warns = [m | DocxParserWarning m <- logs]
-  return $ test id name (unlines warns, unlines expected)
+  return $ test id name (T.unlines warns, unlines expected)
 
 testForWarningsWithOpts :: ReaderOptions -> String -> FilePath -> [String] -> TestTree
 testForWarningsWithOpts opts name docxFile expected =
@@ -89,9 +90,8 @@ testForWarningsWithOpts opts name docxFile expected =
 -- testForWarnings = testForWarningsWithOpts defopts
 
 getMedia :: FilePath -> FilePath -> IO (Maybe B.ByteString)
-getMedia archivePath mediaPath = do
-  zf <- B.readFile archivePath >>= return . toArchive
-  return $ findEntryByPath ("word/" ++ mediaPath) zf >>= (Just . fromEntry)
+getMedia archivePath mediaPath = fmap fromEntry . findEntryByPath
+    ("word/" ++ mediaPath) . toArchive <$> B.readFile archivePath
 
 compareMediaPathIO :: FilePath -> MediaBag -> FilePath -> IO Bool
 compareMediaPathIO mediaPath mediaBag docxPath = do
@@ -256,6 +256,10 @@ tests = [ testGroup "document"
             "docx/lists.docx"
             "docx/lists.native"
           , testCompare
+            "compact lists"
+            "docx/lists-compact.docx"
+            "docx/lists-compact.native"
+          , testCompare
             "lists with level overrides"
             "docx/lists_level_override.docx"
             "docx/lists_level_override.native"
@@ -267,6 +271,10 @@ tests = [ testGroup "document"
             "lists restarting after interruption"
             "docx/lists_restarting.docx"
             "docx/lists_restarting.native"
+          , testCompare
+            "sublists reset numbering to 1"
+            "docx/lists_sublist_reset.docx"
+            "docx/lists_sublist_reset.native"
           , testCompare
             "definition lists"
             "docx/definition_list.docx"
@@ -397,6 +405,10 @@ tests = [ testGroup "document"
             "paragraph insertion/deletion (all)"
             "docx/paragraph_insertion_deletion.docx"
             "docx/paragraph_insertion_deletion_all.native"
+          , testCompareWithOpts def{readerTrackChanges=AllChanges}
+            "paragraph insertion/deletion (all)"
+            "docx/track_changes_scrubbed_metadata.docx"
+            "docx/track_changes_scrubbed_metadata.native"
           , testForWarningsWithOpts def{readerTrackChanges=AcceptChanges}
             "comment warnings (accept -- no warnings)"
             "docx/comments_warning.docx"
@@ -425,6 +437,11 @@ tests = [ testGroup "document"
             "custom styles (`+styles`) enabled"
             "docx/custom-style-reference.docx"
             "docx/custom-style-with-styles.native"
+          , testCompareWithOpts
+            def{readerExtensions=extensionsFromList [Ext_styles]}
+            "custom styles (`+styles`): Compact style is removed from output"
+            "docx/compact-style-removal.docx"
+            "docx/compact-style-removal.native"
           ]
         , testGroup "metadata"
           [ testCompareWithOpts def{readerStandalone=True}

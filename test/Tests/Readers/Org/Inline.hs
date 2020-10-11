@@ -2,7 +2,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {- |
    Module      : Tests.Readers.Org.Inline
-   Copyright   : © 2014-2019 Albert Krewinkel
+   Copyright   : © 2014-2020 Albert Krewinkel
    License     : GNU GPL, version 2 or above
 
    Maintainer  : Albert Krewinkel <albert@zeitkraut.de>
@@ -19,7 +19,6 @@ import Test.Tasty (TestTree, testGroup)
 import Tests.Helpers ((=?>))
 import Tests.Readers.Org.Shared ((=:), spcSep)
 import Text.Pandoc.Builder
-import Text.Pandoc.Shared (underlineSpan)
 import qualified Data.Text as T
 import qualified Tests.Readers.Org.Inline.Citation as Citation
 import qualified Tests.Readers.Org.Inline.Note as Note
@@ -49,7 +48,7 @@ tests =
 
   , "Underline" =:
       "_underline_" =?>
-      para (underlineSpan "underline")
+      para (underline "underline")
 
   , "Strikeout" =:
       "+Kill Bill+" =?>
@@ -215,6 +214,10 @@ tests =
                 , "[[file:guinea-pig.gif]]"
                 ] =?>
       para (imageWith ("", [], [("width", "50%")]) "guinea-pig.gif" "" "")
+
+    , "Uppercase extension" =:
+      "[[file:test.PNG]]" =?>
+      para (image "test.PNG" "" "")
     ]
 
   , "Explicit link" =:

@@ -2,7 +2,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {- |
    Module      : Tests.Readers.Org.Block.Header
-   Copyright   : © 2014-2019 Albert Krewinkel
+   Copyright   : © 2014-2020 Albert Krewinkel
    License     : GNU GPL, version 2 or above
 
    Maintainer  : Albert Krewinkel <albert@zeitkraut.de>
@@ -141,6 +141,16 @@ tests =
   , "Untagged header containing colons" =:
       "* This: is not: tagged" =?>
       headerWith ("this-is-not-tagged", [], []) 1 "This: is not: tagged"
+
+  , "Untagged header time followed by colon" =:
+      "** Meeting at 5:23: free food" =?>
+      let attr = ("meeting-at-523-free-food", [], [])
+      in headerWith attr 2 "Meeting at 5:23: free food"
+
+  , "tag followed by text" =:
+      "*** Looks like a :tag: but isn't" =?>
+      let attr = ("looks-like-a-tag-but-isnt", [], [])
+      in headerWith attr 3 "Looks like a :tag: but isn't"
 
   , "Header starting with strokeout text" =:
       T.unlines [ "foo"

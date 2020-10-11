@@ -39,20 +39,17 @@ return {
     end)
   },
 
-  group 'hierarchicalize' {
+  group 'make_sections' {
     test('sanity check', function ()
       local blks = {
         pandoc.Header(1, {pandoc.Str 'First'}),
         pandoc.Header(2, {pandoc.Str 'Second'}),
         pandoc.Header(2, {pandoc.Str 'Third'}),
       }
-      local hblks = utils.hierarchicalize(blks)
-      -- cannot create Elements directly; performing only an approximate
-      -- sanity checking instead of a full equality comparison.
-      assert.are_equal('Sec', hblks[1].t)
-      assert.are_equal('Sec', hblks[1].contents[1].t)
-      assert.are_equal(1, hblks[1].contents[2].numbering[1])
-      assert.are_equal(2, hblks[1].contents[2].numbering[2])
+      local hblks = utils.make_sections(true, 1, blks)
+      assert.are_equal('Div', hblks[1].t)
+      assert.are_equal('Header', hblks[1].content[1].t)
+      assert.are_equal('1', hblks[1].content[1].attributes['number'])
     end)
   },
 
@@ -93,4 +90,70 @@ return {
       assert.is_falsy(pcall(utils.to_roman_numeral, 'not a number'))
     end)
   },
+
+  group 'to_simple_table' {
+    test('convertes Table', function ()
+      function simple_cell (blocks)
+        return {
+          attr = pandoc.Attr(),
+          alignment = "AlignDefault",
+          contents = blocks,
+          col_span = 1,
+          row_span = 1,
+        }
+      end
+      local tbl = pandoc.Table(
+        {long = {pandoc.Plain {
+                   pandoc.Str "the", pandoc.Space(), pandoc.Str "caption"}}},
+        {{pandoc.AlignDefault, nil}},
+        {pandoc.Attr(), {{pandoc.Attr(), {simple_cell{pandoc.Plain "head1"}}}}},
+        {{
+            attr = pandoc.Attr(),
+            body = {{pandoc.Attr(), {simple_cell{pandoc.Plain "cell1"}}}},
+            head = {},
+            row_head_columns = 0
+        }},
+        {pandoc.Attr(), {}},
+        pandoc.Attr()
+      )
+      local stbl = utils.to_simple_table(tbl)
+      assert.are_equal('SimpleTable', stbl.t)
+      assert.are_equal('head1', utils.stringify(stbl.headers[1]))
+      assert.are_equal('cell1', utils.stringify(stbl.rows[1][1]))
+      assert.are_equal('the caption', utils.stringify(pandoc.Span(stbl.caption)))
+    end),
+    test('fails on para', function ()
+      assert.is_falsy(pcall(utils.to_simple_table, pandoc.Para "nope"))
+    end),
+  },
+  group 'from_simple_table' {
+    test('converts SimpleTable to Table', function ()
+      local caption = {pandoc.Str "Overview"}
+      local aligns = {pandoc.AlignDefault, pandoc.AlignDefault}
+      local widths = {0, 0} -- let pandoc determine col widths
+      local headers = {
+        {pandoc.Plain "Language"},
+        {pandoc.Plain "Typing"}
+      }
+      local rows = {
+        {{pandoc.Plain "Haskell"}, {pandoc.Plain "static"}},
+        {{pandoc.Plain "Lua"}, {pandoc.Plain "Dynamic"}},
+      }
+      local simple_table = pandoc.SimpleTable(
+        caption,
+        aligns,
+        widths,
+        headers,
+        rows
+      )
+      local tbl = utils.from_simple_table(simple_table)
+      assert.are_equal("Table", tbl.t)
+      assert.are_same(
+        {pandoc.Plain(caption)},
+        tbl.caption.long
+      )
+      -- reversible
+      assert.are_same(simple_table, utils.to_simple_table(tbl))
+    end),
+  }
 }

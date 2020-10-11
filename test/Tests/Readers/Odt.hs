@@ -1,7 +1,8 @@
 {-# LANGUAGE NoImplicitPrelude #-}
+{-# LANGUAGE OverloadedStrings #-}
 {- |
    Module      : Tests.Readers.Odt
-   Copyright   : © 2015-2019 John MacFarlane
+   Copyright   : © 2015-2020 John MacFarlane
                    2015 Martin Linnemann
    License     : GNU GPL, version 2 or above
 

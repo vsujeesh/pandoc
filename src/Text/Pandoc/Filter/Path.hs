@@ -1,7 +1,6 @@
-{-# LANGUAGE NoImplicitPrelude #-}
 {- |
    Module      : Text.Pandoc.Filter.Path
-   Copyright   : Copyright (C) 2006-2019 John MacFarlane
+   Copyright   : Copyright (C) 2006-2020 John MacFarlane
    License     : GNU GPL, version 2 or above
 
    Maintainer  : John MacFarlane <jgm@berkeley@edu>
@@ -14,8 +13,7 @@ module Text.Pandoc.Filter.Path
   ( expandFilterPath
   ) where
 
-import Prelude
-import Text.Pandoc.Class (PandocMonad, fileExists, getUserDataDir)
+import Text.Pandoc.Class.PandocMonad (PandocMonad, fileExists, getUserDataDir)
 import System.FilePath ((</>), isRelative)
 
   -- First we check to see if a filter is found.  If not, and if it's

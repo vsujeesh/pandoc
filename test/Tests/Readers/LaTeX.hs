@@ -2,7 +2,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {- |
    Module      : Tests.Readers.LaTeX
-   Copyright   : © 2006-2019 John MacFarlane
+   Copyright   : © 2006-2020 John MacFarlane
    License     : GNU GPL, version 2 or above
 
    Maintainer  : John MacFarlane <jgm@berkeley.edu>
@@ -35,9 +35,19 @@ infix 4 =:
      => String -> (Text, c) -> TestTree
 (=:) = test latex
 
+table' :: [Alignment] -> [Row] -> Blocks
+table' aligns rows
+  = table emptyCaption
+          (zip aligns (repeat ColWidthDefault))
+          (TableHead nullAttr [])
+          [TableBody nullAttr 0 [] rows]
+          (TableFoot nullAttr [])
+
 simpleTable' :: [Alignment] -> [[Blocks]] -> Blocks
-simpleTable' aligns = table "" (zip aligns (repeat 0.0))
-                      (map (const mempty) aligns)
+simpleTable' aligns rows
+  = table' aligns (map toRow rows)
+  where
+    toRow = Row nullAttr . map simpleCell
 
 tokUntokRt :: String -> Bool
 tokUntokRt s = untokenize (tokenize "random" t) == t
@@ -131,6 +141,90 @@ tests = [ testGroup "tokenization"
           , "Table with vertical alignment argument" =:
             "\\begin{tabular}[t]{r|r}One & Two\\\\ \\end{tabular}" =?>
             simpleTable' [AlignRight,AlignRight] [[plain "One", plain "Two"]]
+          , "Table with multicolumn item" =:
+            "\\begin{tabular}{l c r}\\multicolumn{2}{c}{One} & Two\\\\ \\end{tabular}" =?>
+            table' [AlignLeft, AlignCenter, AlignRight]
+                   [ Row nullAttr [ cell AlignCenter (RowSpan 1) (ColSpan 2) (plain "One")
+                                  , simpleCell (plain "Two")
+                                  ]
+                   ]
+          , "table with multicolumn item (#6596)" =:
+            "\\begin{tabular}{l c r}One & \\multicolumn{2}{c}{Two} & \\\\ \\end{tabular}" =?>
+            table' [AlignLeft, AlignCenter, AlignRight]
+                   [ Row nullAttr [ simpleCell (plain "One")
+                                  , cell AlignCenter (RowSpan 1) (ColSpan 2) (plain "Two")
+                                  ]
+                   ]
+          , "Table with multirow item" =:
+            T.unlines ["\\begin{tabular}{c}"
+                      ,"\\multirow{2}{5em}{One}\\\\Two\\\\"
+                      ,"\\end{tabular}"
+                      ] =?>
+            table' [AlignCenter]
+                  [ Row nullAttr [ cell AlignDefault (RowSpan 2) (ColSpan 1) (plain "One") ]
+                  , Row nullAttr [ simpleCell (plain "Two") ]
+                  ]
+          , "Table with multirow item using full prototype" =:
+            T.unlines ["\\begin{tabular}{c}"
+                      ,"\\multirow[c]{2}[3]{5em}[1in]{One}\\\\Two\\\\"
+                      ,"\\end{tabular}"
+                      ] =?>
+            table' [AlignCenter]
+                  [ Row nullAttr [ cell AlignDefault (RowSpan 2) (ColSpan 1) (plain "One") ]
+                  , Row nullAttr [ simpleCell (plain "Two") ]
+                  ]
+          , "Table with nested multirow/multicolumn item" =:
+            T.unlines [ "\\begin{tabular}{c c c c}"
+                      , "\\multicolumn{3}{c}{\\multirow{2}{5em}{One}}&Two\\\\"
+                      , "\\multicolumn{2}{c}{} & & Three\\\\"
+                      , "Four&Five&Six&Seven\\\\"
+                      , "\\end{tabular}"
+                      ] =?>
+            table' [AlignCenter, AlignCenter, AlignCenter, AlignCenter]
+                   [ Row nullAttr [ cell AlignCenter (RowSpan 2) (ColSpan 3) (plain "One")
+                                  , simpleCell (plain "Two")
+                                  ]
+                   , Row nullAttr [ simpleCell (plain "Three") ]
+                   , Row nullAttr [ simpleCell (plain "Four") 
+                                  , simpleCell (plain "Five")
+                                  , simpleCell (plain "Six")
+                                  , simpleCell (plain "Seven")
+                                  ]
+                   ]
+          , "Table with multicolumn header" =:
+            T.unlines [ "\\begin{tabular}{ |l|l| }"
+                      , "\\hline\\multicolumn{2}{|c|}{Header}\\\\" 
+                      , "\\hline key & val\\\\" 
+                      , "\\hline\\end{tabular}"
+                      ] =?>
+            table emptyCaption
+                  (zip [AlignLeft, AlignLeft] (repeat ColWidthDefault))
+                  (TableHead nullAttr [ Row nullAttr [cell AlignCenter (RowSpan 1) (ColSpan 2) (plain "Header")]])
+                  [TableBody nullAttr 0 [] [Row nullAttr [ simpleCell (plain "key")
+                                                         , simpleCell (plain "val")
+                                                         ]
+                                           ]
+                  ]
+                  (TableFoot nullAttr [])
+          , "Table with normal empty cells" =:
+            T.unlines [ "\\begin{tabular}{|r|r|r|}"
+                      , "A &   & B \\\\"
+                      , "  & C &"
+                      , "\\end{tabular}"
+                      ] =?>
+            table emptyCaption
+                  (replicate 3 (AlignRight, ColWidthDefault))
+                  (TableHead nullAttr [])
+                  [TableBody nullAttr 0 []
+                    [Row nullAttr [ simpleCell (plain "A")
+                                  , emptyCell
+                                  , simpleCell (plain "B")
+                                  ]
+                    ,Row nullAttr [ emptyCell
+                                  , simpleCell (plain "C")
+                                  , emptyCell
+                                  ]]]
+                  (TableFoot nullAttr [])
           ]
 
         , testGroup "citations"
@@ -169,10 +263,10 @@ tests = [ testGroup "tokenization"
           testGroup "Character Escapes"
           [ "Two-character escapes" =:
             mconcat ["^^" <> T.pack [i,j] | i <- hex, j <- hex] =?>
-            para (str ['\0'..'\255'])
+            para (str $ T.pack ['\0'..'\255'])
           , "One-character escapes" =:
             mconcat ["^^" <> T.pack [i] | i <- hex] =?>
-            para (str $ ['p'..'y']++['!'..'&'])
+            para (str $ T.pack $ ['p'..'y']++['!'..'&'])
           ]
         , testGroup "memoir scene breaks"
           [ "plainbreak" =:
@@ -255,7 +349,7 @@ baseCitation = Citation{ citationId      = "item1"
                        }
 
 rt :: String -> Inlines
-rt = rawInline "latex"
+rt = rawInline "latex" . T.pack
 
 natbibCitations :: TestTree
 natbibCitations = testGroup "natbib"

@@ -1,5 +1,5 @@
-{-# LANGUAGE NoImplicitPrelude #-}
-{-# LANGUAGE PatternGuards #-}
+{-# LANGUAGE PatternGuards     #-}
+{-# LANGUAGE OverloadedStrings #-}
 {- |
    Module      : Text.Pandoc.Reader.Odt
    Copyright   : Copyright (C) 2015 Martin Linnemann
@@ -14,7 +14,6 @@ Entry point to the odt reader.
 
 module Text.Pandoc.Readers.Odt ( readOdt ) where
 
-import Prelude
 import Codec.Archive.Zip
 import qualified Text.XML.Light as XML
 
@@ -24,8 +23,8 @@ import System.FilePath
 
 import Control.Monad.Except (throwError)
 
-import Text.Pandoc.Class (PandocMonad)
-import qualified Text.Pandoc.Class as P
+import Text.Pandoc.Class.PandocMonad (PandocMonad)
+import qualified Text.Pandoc.Class.PandocMonad as P
 import Text.Pandoc.Definition
 import Text.Pandoc.Error
 import Text.Pandoc.MediaBag

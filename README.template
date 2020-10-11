@@ -10,8 +10,7 @@ Pandoc
 [![hackage release](https://img.shields.io/hackage/v/pandoc.svg?label=hackage)](http://hackage.haskell.org/package/pandoc)
 [![homebrew](https://img.shields.io/homebrew/v/pandoc.svg)](http://brewformulas.org/Pandoc)
 [![stackage LTS package](http://stackage.org/package/pandoc/badge/lts)](http://stackage.org/lts/package/pandoc)
-[![CircleCI](https://circleci.com/gh/jgm/pandoc.svg?style=svg)](https://circleci.com/gh/jgm/pandoc)
-[![appveyor build status](https://ci.appveyor.com/api/projects/status/nvqs4ct090igjiqc?svg=true)](https://ci.appveyor.com/project/jgm/pandoc)
+[![CI tests](https://github.com/jgm/pandoc/workflows/CI%20tests/badge.svg)](https://github.com/jgm/pandoc/actions)
 [![license](https://img.shields.io/badge/license-GPLv2+-lightgray.svg)](https://www.gnu.org/licenses/gpl.html)
 [![pandoc-discuss on google groups](https://img.shields.io/badge/pandoc-discuss-red.svg?style=social)](https://groups.google.com/forum/#!forum/pandoc-discuss)
 
@@ -44,7 +43,7 @@ this native representation into a target format. Thus, adding an input
 or output format requires only adding a reader or writer. Users can also
 run custom pandoc filters to modify the intermediate AST (see
 the documentation for [filters](https://pandoc.org/filters.html)
-and [lua filters](https://pandoc.org/lua-filters.html)).
+and [Lua filters](https://pandoc.org/lua-filters.html)).
 
 Because pandoc's intermediate representation of a document is less
 expressive than many of the formats it converts between, one should
@@ -82,7 +81,7 @@ new issue.
 License
 -------
 
-© 2006-2018 John MacFarlane (jgm@berkeley.edu). Released under the
+© 2006-2020 John MacFarlane (jgm@berkeley.edu). Released under the
 [GPL], version 2 or greater.  This software carries no warranty of
 any kind.  (See COPYRIGHT for full copyright and warranty notices.)
 

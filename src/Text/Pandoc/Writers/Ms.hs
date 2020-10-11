@@ -1,7 +1,8 @@
-{-# LANGUAGE NoImplicitPrelude #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ViewPatterns      #-}
 {- |
    Module      : Text.Pandoc.Writers.Ms
-   Copyright   : Copyright (C) 2007-2019 John MacFarlane
+   Copyright   : Copyright (C) 2007-2020 John MacFarlane
    License     : GNU GPL, version 2 or above
 
    Maintainer  : John MacFarlane <jgm@berkeley.edu>
@@ -19,19 +20,18 @@ TODO:
 -}
 
 module Text.Pandoc.Writers.Ms ( writeMs ) where
-import Prelude
 import Control.Monad.State.Strict
-import Data.Char (isLower, isUpper, toUpper, ord)
+import Data.Char (isLower, isUpper, ord)
 import Data.List (intercalate, intersperse)
 import qualified Data.Map as Map
-import Data.Maybe (catMaybes, fromMaybe)
+import Data.Maybe (catMaybes)
 import Data.Text (Text)
 import qualified Data.Text as T
 import Network.URI (escapeURIString, isAllowedInURI)
 import Skylighting
 import System.FilePath (takeExtension)
 import Text.Pandoc.Asciify (toAsciiChar)
-import Text.Pandoc.Class (PandocMonad, report)
+import Text.Pandoc.Class.PandocMonad (PandocMonad, report)
 import Text.Pandoc.Definition
 import Text.Pandoc.Highlighting
 import Text.Pandoc.ImageSize
@@ -67,40 +67,39 @@ pandocToMs opts (Pandoc meta blocks) = do
   let authorsMeta = map (escapeStr opts . stringify) $ docAuthors meta
   hasHighlighting <- gets stHighlighting
   let highlightingMacros = if hasHighlighting
-                              then case writerHighlightStyle opts of
-                                        Nothing  -> mempty
-                                        Just sty -> styleToMs sty
+                              then maybe mempty styleToMs $ writerHighlightStyle opts
                               else mempty
 
   let context = defField "body" main
               $ defField "has-inline-math" hasInlineMath
               $ defField "hyphenate" True
-              $ defField "pandoc-version" (T.pack pandocVersion)
+              $ defField "pandoc-version" pandocVersion
               $ defField "toc" (writerTableOfContents opts)
-              $ defField "title-meta" (T.pack titleMeta)
-              $ defField "author-meta" (T.pack $ intercalate "; " authorsMeta)
+              $ defField "title-meta" titleMeta
+              $ defField "author-meta" (T.intercalate "; " authorsMeta)
               $ defField "highlighting-macros" highlightingMacros metadata
   return $ render colwidth $
     case writerTemplate opts of
        Nothing  -> main
        Just tpl -> renderTemplate tpl context
 
-escapeStr :: WriterOptions -> String -> String
+escapeStr :: WriterOptions -> Text -> Text
 escapeStr opts =
   escapeString (if writerPreferAscii opts then AsciiOnly else AllowUTF8)
 
-escapeUri :: String -> String
-escapeUri = escapeURIString (\c -> c /= '@' && isAllowedInURI c)
+escapeUri :: Text -> Text
+escapeUri = T.pack . escapeURIString (\c -> c /= '@' && isAllowedInURI c) . T.unpack
 
-toSmallCaps :: WriterOptions -> String -> String
-toSmallCaps _ [] = []
-toSmallCaps opts (c:cs)
-  | isLower c = let (lowers,rest) = span isLower (c:cs)
-                in  "\\s-2" ++ escapeStr opts (map toUpper lowers) ++
-                    "\\s0" ++ toSmallCaps opts rest
-  | isUpper c = let (uppers,rest) = span isUpper (c:cs)
-                in  escapeStr opts uppers ++ toSmallCaps opts rest
-  | otherwise = escapeStr opts [c] ++ toSmallCaps opts cs
+toSmallCaps :: WriterOptions -> Text -> Text
+toSmallCaps opts s = case T.uncons s of
+  Nothing -> ""
+  Just (c, cs)
+    | isLower c -> let (lowers,rest) = T.span isLower s
+                   in  "\\s-2" <> escapeStr opts (T.toUpper lowers) <>
+                       "\\s0" <> toSmallCaps opts rest
+    | isUpper c -> let (uppers,rest) = T.span isUpper s
+                   in  escapeStr opts uppers <> toSmallCaps opts rest
+    | otherwise -> escapeStr opts (T.singleton c) <> toSmallCaps opts cs
 
 -- We split inline lists into sentences, and print one sentence per
 -- line.  roff treats the line-ending period differently.
@@ -111,51 +110,72 @@ blockToMs :: PandocMonad m
           -> Block         -- ^ Block element
           -> MS m (Doc Text)
 blockToMs _ Null = return empty
-blockToMs opts (Div (ident,_,_) bs) = do
-  let anchor = if null ident
+blockToMs opts (Div (ident,cls,kvs) bs) = do
+  let anchor = if T.null ident
                   then empty
                   else nowrap $
-                         text ".pdfhref M "
-                         <> doubleQuotes (text (toAscii ident))
-  setFirstPara
-  res <- blockListToMs opts bs
-  setFirstPara
-  return $ anchor $$ res
+                         literal ".pdfhref M "
+                         <> doubleQuotes (literal (toAscii ident))
+  case cls of
+    _ | "csl-entry" `elem` cls ->
+       (".CSLENTRY" $$) . vcat <$> mapM (cslEntryToMs True opts) bs
+      | "csl-bib-body" `elem` cls -> do
+       res <- blockListToMs opts bs
+       return $ anchor $$
+                -- so that XP paragraphs are indented:
+                ".nr PI 3n" $$
+                -- space between entries
+                ".de CSLENTRY" $$
+                (case lookup "entry-spacing" kvs >>= safeRead of
+                   Just n | n > (0 :: Int) -> ".sp"
+                   _ -> mempty) $$
+                ".." $$
+                ".de CSLP" $$
+                (if "hanging-indent" `elem` cls
+                    then ".XP"
+                    else ".LP") $$
+                ".." $$
+                res
+    _ -> do
+       setFirstPara
+       res <- blockListToMs opts bs
+       setFirstPara
+       return $ anchor $$ res
 blockToMs opts (Plain inlines) =
   liftM vcat $ mapM (inlineListToMs' opts) $ splitSentences inlines
 blockToMs opts (Para [Image attr alt (src,_tit)])
-  | let ext = takeExtension src in (ext == ".ps" || ext == ".eps") = do
+  | let ext = takeExtension (T.unpack src) in (ext == ".ps" || ext == ".eps") = do
   let (mbW,mbH) = (inPoints opts <$> dimension Width attr,
                    inPoints opts <$> dimension Height attr)
   let sizeAttrs = case (mbW, mbH) of
                        (Just wp, Nothing) -> space <> doubleQuotes
-                              (text (show (floor wp :: Int) ++ "p"))
+                              (literal (tshow (floor wp :: Int) <> "p"))
                        (Just wp, Just hp) -> space <> doubleQuotes
-                              (text (show (floor wp :: Int) ++ "p")) <>
+                              (literal (tshow (floor wp :: Int) <> "p")) <>
                               space <>
-                              doubleQuotes (text (show (floor hp :: Int)))
+                              doubleQuotes (literal (tshow (floor hp :: Int)))
                        _ -> empty
   capt <- inlineListToMs' opts alt
-  return $ nowrap (text ".PSPIC -C " <>
-             doubleQuotes (text (escapeStr opts src)) <>
+  return $ nowrap (literal ".PSPIC -C " <>
+             doubleQuotes (literal (escapeStr opts src)) <>
              sizeAttrs) $$
-           text ".ce 1000" $$
+           literal ".ce 1000" $$
            capt $$
-           text ".ce 0"
+           literal ".ce 0"
 blockToMs opts (Para inlines) = do
   firstPara <- gets stFirstPara
   resetFirstPara
   contents <- liftM vcat $ mapM (inlineListToMs' opts) $
     splitSentences inlines
-  return $ text (if firstPara then ".LP" else ".PP") $$ contents
+  return $ literal (if firstPara then ".LP" else ".PP") $$ contents
 blockToMs _ b@(RawBlock f str)
-  | f == Format "ms" = return $ text str
+  | f == Format "ms" = return $ literal str
   | otherwise        = do
       report $ BlockNotRendered b
       return empty
 blockToMs _ HorizontalRule = do
   resetFirstPara
-  return $ text ".HLINE"
+  return $ literal ".HLINE"
 blockToMs opts (Header level (ident,classes,_) inlines) = do
   setFirstPara
   modify $ \st -> st{ stInHeader = True }
@@ -165,33 +185,33 @@ blockToMs opts (Header level (ident,classes,_) inlines) = do
                               "unnumbered" `notElem` classes
                              then (".NH", "\\*[SN]")
                              else (".SH", "")
-  let anchor = if null ident
+  let anchor = if T.null ident
                   then empty
                   else nowrap $
-                         text ".pdfhref M "
-                         <> doubleQuotes (text (toAscii ident))
-  let bookmark = text ".pdfhref O " <> text (show level ++ " ") <>
-                      doubleQuotes (text $ secnum ++
-                                      (if null secnum
+                         literal ".pdfhref M "
+                         <> doubleQuotes (literal (toAscii ident))
+  let bookmark = literal ".pdfhref O " <> literal (tshow level <> " ") <>
+                      doubleQuotes (literal $ secnum <>
+                                      (if T.null secnum
                                           then ""
-                                          else "  ") ++
+                                          else "  ") <>
                                       escapeStr opts (stringify inlines))
-  let backlink = nowrap (text ".pdfhref L -D " <>
-       doubleQuotes (text (toAscii ident)) <> space <> text "\\") <> cr <>
-       text " -- "
+  let backlink = nowrap (literal ".pdfhref L -D " <>
+       doubleQuotes (literal (toAscii ident)) <> space <> literal "\\") <> cr <>
+       literal " -- "
   let tocEntry = if writerTableOfContents opts &&
                      level <= writerTOCDepth opts
-                    then text ".XS"
+                    then literal ".XS"
                          $$ backlink <> doubleQuotes (
-                            nowrap (text (replicate level '\t') <>
-                             (if null secnum
+                            nowrap (literal (T.replicate level "\t") <>
+                             (if T.null secnum
                                  then empty
-                                 else text secnum <> text "\\~\\~")
+                                 else literal secnum <> literal "\\~\\~")
                               <> contents))
-                         $$ text ".XE"
+                         $$ literal ".XE"
                     else empty
   modify $ \st -> st{ stFirstPara = True }
-  return $ (text heading <> space <> text (show level)) $$
+  return $ (literal heading <> space <> literal (tshow level)) $$
            contents $$
            bookmark $$
            anchor $$
@@ -200,12 +220,14 @@ blockToMs opts (CodeBlock attr str) = do
   hlCode <- highlightCode opts attr str
   setFirstPara
   return $
-    text ".IP" $$
-    text ".nf" $$
-    text "\\f[C]" $$
-    hlCode $$
-    text "\\f[]" $$
-    text ".fi"
+    literal ".IP" $$
+    literal ".nf" $$
+    literal "\\f[C]" $$
+    ((case T.uncons str of
+      Just ('.',_) -> literal "\\&"
+      _            -> mempty) <> hlCode) $$
+    literal "\\f[]" $$
+    literal ".fi"
 blockToMs opts (LineBlock ls) = do
   setFirstPara  -- use .LP, see #5588
   blockToMs opts $ Para $ intercalate [LineBreak] ls
@@ -213,9 +235,10 @@ blockToMs opts (BlockQuote blocks) = do
   setFirstPara
   contents <- blockListToMs opts blocks
   setFirstPara
-  return $ text ".RS" $$ contents $$ text ".RE"
-blockToMs opts (Table caption alignments widths headers rows) =
-  let aligncode AlignLeft    = "l"
+  return $ literal ".QS" $$ contents $$ literal ".QE"
+blockToMs opts (Table _ blkCapt specs thead tbody tfoot) =
+  let (caption, alignments, widths, headers, rows) = toLegacyTable blkCapt specs thead tbody tfoot
+      aligncode AlignLeft    = "l"
       aligncode AlignRight   = "r"
       aligncode AlignCenter  = "c"
       aligncode AlignDefault = "l"
@@ -223,15 +246,15 @@ blockToMs opts (Table caption alignments widths headers rows) =
   caption' <- inlineListToMs' opts caption
   let iwidths = if all (== 0) widths
                    then repeat ""
-                   else map (printf "w(%0.1fn)" . (70 *)) widths
+                   else map (T.pack . printf "w(%0.1fn)" . (70 *)) widths
   -- 78n default width - 8n indent = 70n
-  let coldescriptions = text $ unwords
-                        (zipWith (\align width -> aligncode align ++ width)
-                        alignments iwidths) ++ "."
+  let coldescriptions = literal $ T.unwords
+                        (zipWith (\align width -> aligncode align <> width)
+                        alignments iwidths) <> "."
   colheadings <- mapM (blockListToMs opts) headers
-  let makeRow cols = text "T{" $$
-                     vcat (intersperse (text "T}\tT{") cols) $$
-                     text "T}"
+  let makeRow cols = literal "T{" $$
+                     vcat (intersperse (literal "T}\tT{") cols) $$
+                     literal "T}"
   let colheadings' = if all null headers
                         then empty
                         else makeRow colheadings $$ char '_'
@@ -239,9 +262,9 @@ blockToMs opts (Table caption alignments widths headers rows) =
                          cols <- mapM (blockListToMs opts) row
                          return $ makeRow cols) rows
   setFirstPara
-  return $ text ".PP" $$ caption' $$
-           text ".TS" $$ text "delim(@@) tab(\t);" $$ coldescriptions $$
-           colheadings' $$ vcat body $$ text ".TE"
+  return $ literal ".PP" $$ caption' $$
+           literal ".TS" $$ literal "delim(@@) tab(\t);" $$ coldescriptions $$
+           colheadings' $$ vcat body $$ literal ".TE"
 
 blockToMs opts (BulletList items) = do
   contents <- mapM (bulletListItemToMs opts) items
@@ -250,7 +273,7 @@ blockToMs opts (BulletList items) = do
 blockToMs opts (OrderedList attribs items) = do
   let markers = take (length items) $ orderedListMarkers attribs
   let indent = 2 +
-                     maximum (map length markers)
+                     maximum (map T.length markers)
   contents <- mapM (\(num, item) -> orderedListItemToMs opts num indent item) $
               zip markers items
   setFirstPara
@@ -268,20 +291,20 @@ bulletListItemToMs opts (Para first:rest) =
 bulletListItemToMs opts (Plain first:rest) = do
   first' <- blockToMs opts (Plain first)
   rest' <- blockListToMs opts rest
-  let first'' = text ".IP \\[bu] 3" $$ first'
+  let first'' = literal ".IP \\[bu] 3" $$ first'
   let rest''  = if null rest
                    then empty
-                   else text ".RS 3" $$ rest' $$ text ".RE"
+                   else literal ".RS 3" $$ rest' $$ literal ".RE"
   return (first'' $$ rest'')
 bulletListItemToMs opts (first:rest) = do
   first' <- blockToMs opts first
   rest' <- blockListToMs opts rest
-  return $ text "\\[bu] .RS 3" $$ first' $$ rest' $$ text ".RE"
+  return $ literal "\\[bu] .RS 3" $$ first' $$ rest' $$ literal ".RE"
 
 -- | Convert ordered list item (a list of blocks) to ms.
 orderedListItemToMs :: PandocMonad m
                     => WriterOptions -- ^ options
-                    -> String   -- ^ order marker for list item
+                    -> Text   -- ^ order marker for list item
                     -> Int      -- ^ number of spaces to indent
                     -> [Block]  -- ^ list item (list of blocks)
                     -> MS m (Doc Text)
@@ -291,12 +314,12 @@ orderedListItemToMs opts num indent (Para first:rest) =
 orderedListItemToMs opts num indent (first:rest) = do
   first' <- blockToMs opts first
   rest' <- blockListToMs opts rest
-  let num' = printf ("%" ++ show (indent - 1) ++ "s") num
-  let first'' = text (".IP \"" ++ num' ++ "\" " ++ show indent) $$ first'
+  let num' = T.pack $ printf ("%" <> show (indent - 1) <> "s") num
+  let first'' = literal (".IP \"" <> num' <> "\" " <> tshow indent) $$ first'
   let rest''  = if null rest
                    then empty
-                   else text ".RS " <> text (show indent) $$
-                         rest' $$ text ".RE"
+                   else literal ".RS " <> literal (tshow indent) $$
+                         rest' $$ literal ".RE"
   return $ first'' $$ rest''
 
 -- | Convert definition list item (label, list of blocks) to ms.
@@ -305,7 +328,8 @@ definitionListItemToMs :: PandocMonad m
                        -> ([Inline],[[Block]])
                        -> MS m (Doc Text)
 definitionListItemToMs opts (label, defs) = do
-  labelText <- inlineListToMs' opts $ map breakToSpace label
+  labelText <- withFontFeature 'B' $
+                 inlineListToMs' opts $ map breakToSpace label
   contents <- if null defs
                  then return empty
                  else liftM vcat $ forM defs $ \blocks -> do
@@ -317,8 +341,9 @@ definitionListItemToMs opts (label, defs) = do
                         rest' <- liftM vcat $
                                   mapM (\item -> blockToMs opts item) rest
                         first' <- blockToMs opts first
-                        return $ first' $$ text ".RS" $$ rest' $$ text ".RE"
-  return $ nowrap (text ".IP " <> doubleQuotes labelText) $$ contents
+                        return $ first' $$ literal ".RS 3" $$ rest' $$ literal ".RE"
+  return $ nowrap (literal ".IP " <> doubleQuotes labelText <> " 3") $$
+           contents
 
 -- | Convert list of Pandoc block elements to ms.
 blockListToMs :: PandocMonad m
@@ -347,19 +372,21 @@ inlineToMs :: PandocMonad m => WriterOptions -> Inline -> MS m (Doc Text)
 inlineToMs opts (Span _ ils) = inlineListToMs opts ils
 inlineToMs opts (Emph lst) =
   withFontFeature 'I' (inlineListToMs opts lst)
+inlineToMs opts (Underline lst) =
+  inlineToMs opts (Emph lst)
 inlineToMs opts (Strong lst) =
   withFontFeature 'B' (inlineListToMs opts lst)
 inlineToMs opts (Strikeout lst) = do
   contents <- inlineListToMs opts lst
   -- we use grey color instead of strikeout, which seems quite
   -- hard to do in roff for arbitrary bits of text
-  return $ text "\\m[strikecolor]" <> contents <> text "\\m[]"
+  return $ literal "\\m[strikecolor]" <> contents <> literal "\\m[]"
 inlineToMs opts (Superscript lst) = do
   contents <- inlineListToMs opts lst
-  return $ text "\\*{" <> contents <> text "\\*}"
+  return $ literal "\\*{" <> contents <> literal "\\*}"
 inlineToMs opts (Subscript lst) = do
   contents <- inlineListToMs opts lst
-  return $ text "\\*<" <> contents <> text "\\*>"
+  return $ literal "\\*<" <> contents <> literal "\\*>"
 inlineToMs opts (SmallCaps lst) = do
   -- see https://lists.gnu.org/archive/html/groff/2015-01/msg00016.html
   modify $ \st -> st{ stSmallCaps = not (stSmallCaps st) }
@@ -371,40 +398,40 @@ inlineToMs opts (Quoted SingleQuote lst) = do
   return $ char '`' <> contents <> char '\''
 inlineToMs opts (Quoted DoubleQuote lst) = do
   contents <- inlineListToMs opts lst
-  return $ text "\\[lq]" <> contents <> text "\\[rq]"
+  return $ literal "\\[lq]" <> contents <> literal "\\[rq]"
 inlineToMs opts (Cite _ lst) =
   inlineListToMs opts lst
 inlineToMs opts (Code attr str) = do
   hlCode <- highlightCode opts attr str
   withFontFeature 'C' (return hlCode)
 inlineToMs opts (Str str) = do
-  let shim = case str of
-                  '.':_ -> afterBreak (T.pack "\\&")
-                  _     -> empty
+  let shim = case T.uncons str of
+                  Just ('.',_) -> afterBreak "\\&"
+                  _            -> empty
   smallcaps <- gets stSmallCaps
   if smallcaps
-     then return $ shim <> text (toSmallCaps opts str)
-     else return $ shim <> text (escapeStr opts str)
+     then return $ shim <> literal (toSmallCaps opts str)
+     else return $ shim <> literal (escapeStr opts str)
 inlineToMs opts (Math InlineMath str) = do
   modify $ \st -> st{ stHasInlineMath = True }
   res <- convertMath writeEqn InlineMath str
   case res of
        Left il -> inlineToMs opts il
-       Right r -> return $ text "@" <> text r <> text "@"
+       Right r -> return $ literal "@" <> literal r <> literal "@"
 inlineToMs opts (Math DisplayMath str) = do
   res <- convertMath writeEqn InlineMath str
   case res of
        Left il -> do
          contents <- inlineToMs opts il
-         return $ cr <> text ".RS" $$ contents $$ text ".RE"
+         return $ cr <> literal ".RS 3" $$ contents $$ literal ".RE"
        Right r -> return $
-            cr <> text ".EQ" $$ text r $$ text ".EN" <> cr
+            cr <> literal ".EQ" $$ literal r $$ literal ".EN" <> cr
 inlineToMs _ il@(RawInline f str)
-  | f == Format "ms" = return $ text str
+  | f == Format "ms" = return $ literal str
   | otherwise        = do
     report $ InlineNotRendered il
     return empty
-inlineToMs _ LineBreak = return $ cr <> text ".br" <> cr
+inlineToMs _ LineBreak = return $ cr <> literal ".br" <> cr
 inlineToMs opts SoftBreak =
   handleNotes opts $
     case writerWrapText opts of
@@ -412,27 +439,60 @@ inlineToMs opts SoftBreak =
          WrapNone     -> space
          WrapPreserve -> cr
 inlineToMs opts Space = handleNotes opts space
-inlineToMs opts (Link _ txt ('#':ident, _)) = do
+inlineToMs opts (Link _ txt (T.uncons -> Just ('#',ident), _)) = do
   -- internal link
   contents <- inlineListToMs' opts $ map breakToSpace txt
-  return $ text "\\c" <> cr <> nowrap (text ".pdfhref L -D " <>
-       doubleQuotes (text (toAscii ident)) <> text " -A " <>
-       doubleQuotes (text "\\c") <> space <> text "\\") <> cr <>
-       text " -- " <> doubleQuotes (nowrap contents) <> cr <> text "\\&"
+  return $ literal "\\c" <> cr <> nowrap (literal ".pdfhref L -D " <>
+       doubleQuotes (literal (toAscii ident)) <> literal " -A " <>
+       doubleQuotes (literal "\\c") <> space <> literal "\\") <> cr <>
+       literal " -- " <> doubleQuotes (nowrap contents) <> cr <> literal "\\&"
 inlineToMs opts (Link _ txt (src, _)) = do
   -- external link
   contents <- inlineListToMs' opts $ map breakToSpace txt
-  return $ text "\\c" <> cr <> nowrap (text ".pdfhref W -D " <>
-       doubleQuotes (text (escapeUri src)) <> text " -A " <>
-       doubleQuotes (text "\\c") <> space <> text "\\") <> cr <>
-       text " -- " <> doubleQuotes (nowrap contents) <> cr <> text "\\&"
+  return $ literal "\\c" <> cr <> nowrap (literal ".pdfhref W -D " <>
+       doubleQuotes (literal (escapeUri src)) <> literal " -A " <>
+       doubleQuotes (literal "\\c") <> space <> literal "\\") <> cr <>
+       literal " -- " <> doubleQuotes (nowrap contents) <> cr <> literal "\\&"
 inlineToMs opts (Image _ alternate (_, _)) =
-  return $ char '[' <> text "IMAGE: " <>
-           text (escapeStr opts (stringify alternate))
+  return $ char '[' <> literal "IMAGE: " <>
+           literal (escapeStr opts (stringify alternate))
              <> char ']'
 inlineToMs _ (Note contents) = do
   modify $ \st -> st{ stNotes = contents : stNotes st }
-  return $ text "\\**"
+  return $ literal "\\**"
+
+cslEntryToMs :: PandocMonad m
+             => Bool
+             -> WriterOptions
+             -> Block
+             -> MS m (Doc Text)
+cslEntryToMs atStart opts (Para xs) =
+  case xs of
+    (Span ("",["csl-left-margin"],[]) lils :
+      rest@(Span ("",["csl-right-inline"],[]) _ : _))
+      -> do lils' <- inlineListToMs' opts lils
+            ((cr <> literal ".IP " <>
+              doubleQuotes (nowrap lils') <>
+              literal " 5") $$)
+                <$> cslEntryToMs False opts (Para rest)
+    (Span ("",["csl-block"],[]) ils : rest)
+      -> ((cr <> literal ".LP") $$)
+                <$> cslEntryToMs False opts (Para (ils ++ rest))
+    (Span ("",["csl-left-margin"],[]) ils : rest)
+      -> ((cr <> literal ".LP") $$)
+              <$> cslEntryToMs False opts (Para (ils ++ rest))
+    (Span ("",["csl-indented"],[]) ils : rest)
+      -> ((cr <> literal ".LP") $$)
+              <$> cslEntryToMs False opts (Para (ils ++ rest))
+    _ | atStart
+         -> (".CSLP" $$) <$> cslEntryToMs False opts (Para xs)
+      | otherwise
+         -> case xs of
+           [] -> return mempty
+           (x:rest) -> (<>) <$> (inlineToMs opts x)
+                            <*> (cslEntryToMs False opts (Para rest))
+cslEntryToMs _ opts x = blockToMs opts x
+
 
 handleNotes :: PandocMonad m => WriterOptions -> Doc Text -> MS m (Doc Text)
 handleNotes opts fallback = do
@@ -451,7 +511,7 @@ handleNote opts bs = do
                  (Para ils : rest) -> Plain ils : rest
                  _                 -> bs
   contents <- blockListToMs opts bs'
-  return $ cr <> text ".FS" $$ contents $$ text ".FE" <> cr
+  return $ cr <> literal ".FS" $$ contents $$ literal ".FE" <> cr
 
 setFirstPara :: PandocMonad m => MS m ()
 setFirstPara = modify $ \st -> st{ stFirstPara = True }
@@ -467,70 +527,70 @@ breakToSpace x         = x
 -- Highlighting
 
 styleToMs :: Style -> Doc Text
-styleToMs sty = vcat $ colordefs ++ map (toMacro sty) alltoktypes
+styleToMs sty = vcat $ colordefs <> map (toMacro sty) alltoktypes
   where alltoktypes = enumFromTo KeywordTok NormalTok
         colordefs = map toColorDef allcolors
-        toColorDef c = text (".defcolor " ++
-            hexColor c ++ " rgb #" ++ hexColor c)
+        toColorDef c = literal (".defcolor " <>
+            hexColor c <> " rgb #" <> hexColor c)
         allcolors = catMaybes $ ordNub $
           [defaultColor sty, backgroundColor sty,
-           lineNumberColor sty, lineNumberBackgroundColor sty] ++
+           lineNumberColor sty, lineNumberBackgroundColor sty] <>
            concatMap (colorsForToken. snd) (Map.toList (tokenStyles sty))
         colorsForToken ts = [tokenColor ts, tokenBackground ts]
 
-hexColor :: Color -> String
-hexColor (RGB r g b) = printf "%02x%02x%02x" r g b
+hexColor :: Color -> Text
+hexColor (RGB r g b) = T.pack $ printf "%02x%02x%02x" r g b
 
 toMacro :: Style -> TokenType -> Doc Text
 toMacro sty toktype =
-  nowrap (text ".ds " <> text (show toktype) <> text " " <>
+  nowrap (literal ".ds " <> literal (tshow toktype) <> literal " " <>
             setbg <> setcolor <> setfont <>
-            text "\\\\$1" <>
+            literal "\\\\$1" <>
             resetfont <> resetcolor <> resetbg)
   where setcolor = maybe empty fgcol tokCol
-        resetcolor = maybe empty (const $ text "\\\\m[]") tokCol
+        resetcolor = maybe empty (const $ literal "\\\\m[]") tokCol
         setbg = empty -- maybe empty bgcol tokBg
         resetbg = empty -- maybe empty (const $ text "\\\\M[]") tokBg
-        fgcol c = text $ "\\\\m[" ++ hexColor c ++ "]"
-        -- bgcol c = text $ "\\\\M[" ++ hexColor c ++ "]"
+        fgcol c = literal $ "\\\\m[" <> hexColor c <> "]"
+        -- bgcol c = literal $ "\\\\M[" <> hexColor c <> "]"
         setfont = if tokBold || tokItalic
-                     then text $ "\\\\f[C" ++ ['B' | tokBold] ++
-                          ['I' | tokItalic] ++ "]"
+                     then literal $ T.pack $ "\\\\f[C" <> ['B' | tokBold] <>
+                          ['I' | tokItalic] <> "]"
                      else empty
         resetfont = if tokBold || tokItalic
-                       then text "\\\\f[C]"
+                       then literal "\\\\f[C]"
                        else empty
         tokSty = Map.lookup toktype (tokenStyles sty)
         tokCol = (tokSty >>= tokenColor) `mplus` defaultColor sty
         -- tokBg  = (tokSty >>= tokenBackground) `mplus` backgroundColor sty
-        tokBold = fromMaybe False (tokenBold <$> tokSty)
-        tokItalic = fromMaybe False (tokenItalic <$> tokSty)
+        tokBold = maybe False tokenBold tokSty
+        tokItalic = maybe False tokenItalic tokSty
         -- tokUnderline = fromMaybe False (tokSty >>= tokUnderline)
         -- lnColor = lineNumberColor sty
         -- lnBkgColor = lineNumberBackgroundColor sty
 
 msFormatter :: WriterOptions -> FormatOptions -> [SourceLine] -> Doc Text
 msFormatter opts _fmtopts =
-  vcat . map fmtLine
-  where fmtLine = hcat . map fmtToken
-        fmtToken (toktype, tok) = text "\\*" <>
-           brackets (text (show toktype) <> text " \""
-             <> text (escapeStr opts (T.unpack tok)) <> text "\"")
+  literal . T.intercalate "\n" . map fmtLine
+ where
+  fmtLine = mconcat . map fmtToken
+  fmtToken (toktype, tok) =
+    "\\*[" <> tshow toktype <> " \"" <> escapeStr opts tok <> "\"]"
 
-highlightCode :: PandocMonad m => WriterOptions -> Attr -> String -> MS m (Doc Text)
+highlightCode :: PandocMonad m => WriterOptions -> Attr -> Text -> MS m (Doc Text)
 highlightCode opts attr str =
   case highlight (writerSyntaxMap opts) (msFormatter opts) attr str of
          Left msg -> do
-           unless (null msg) $ report $ CouldNotHighlight msg
-           return $ text (escapeStr opts str)
+           unless (T.null msg) $ report $ CouldNotHighlight msg
+           return $ literal (escapeStr opts str)
          Right h -> do
            modify (\st -> st{ stHighlighting = True })
            return h
 
 -- This is used for PDF anchors.
-toAscii :: String -> String
-toAscii = concatMap
+toAscii :: Text -> Text
+toAscii = T.concatMap
   (\c -> case toAsciiChar c of
-              Nothing -> '_':'u':show (ord c) ++ "_"
-              Just '/' -> '_':'u':show (ord c) ++ "_" -- see #4515
-              Just c' -> [c'])
+              Nothing -> "_u" <> tshow (ord c) <> "_"
+              Just '/' -> "_u" <> tshow (ord c) <> "_" -- see #4515
+              Just c' -> T.singleton c')

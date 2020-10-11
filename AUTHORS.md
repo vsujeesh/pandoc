@@ -2,6 +2,7 @@
 
 - Anabra
 - Arata Mizuki
+- Arfon Smith
 - Aaron Wolen
 - Albert Krewinkel
 - Alex Ivkin
@@ -10,7 +11,9 @@
 - Alexander Krotov
 - Alexander Sulfrian
 - Alexander V Vershilov
+- Alexandre Franke
 - Alfred Wechselberger
+- Amogh Rathore
 - Anders Waldenborg
 - Andreas Lööw
 - Andrew Dunning
@@ -24,18 +27,24 @@
 - B. Scott Michel
 - Ben Firshman
 - Ben Gamari
+- Ben Steinberg
 - Beni Cherniavsky-Paskin
 - Benoit Schweblin
 - Bjorn Buckwalter
+- Blake Eryx
 - Bradley Kuhn
 - Brent Yorgey
 - Brian Leung
 - Bryan O'Sullivan
 - Caleb McDaniel
+- Caleb Mclennan
 - Calvin Beck
 - Carlos Sosa
+- Cécile Chemin
+- Cédric Couralet
 - Chris Black
 - Christian Conkle
+- Christian Despres
 - Christoffer Ackelman
 - Christoffer Sawicki
 - Clare Macrae
@@ -52,18 +61,29 @@
 - David Lazar
 - David Röthlisberger
 - Denis Laxalde
+- Denis Maier
 - Derek Chen-Becker
+- Diego Balseiro
+- Dmitry Pogodin
+- Dmitry Volodin
 - Douglas Calvert
+- Eigil Rischel
 - Emanuel Evans
+- Emerson Harkin
 - Emily Eisenberg
 - Eric Kow
 - Eric Seidel
 - Eric Schrijver
+- Ethan Riley
 - Étienne Bersac
 - Felix Yan
+- Félix Baylac-Jacqué
+- Florian Beeres
 - Florian Eitel
+- Florian Klink
 - Francesco Occhipinti
 - François Gannaz
+- Frederik Elwert
 - Freiric Barral
 - Freirich Raabe
 - Frerich Raabe
@@ -77,26 +97,32 @@
 - Gwern Branwen
 - Hamish Mackenzie
 - Hans-Peter Deifel
+- Heiko Schlittermann
 - Henrik Tramberend
 - Henry de Valence
 - Hubert Plociniczak
+- Ian Max Andolina
 - Igor Khorlo
 - Ilya V. Portnov
 - Ivan Trubach
 - Ivo Clarysse
+- Jared Lander
 - J. B. Rainsberger
 - J. Lewis Muir
 - Jaime Marquínez Ferrándiz
+- Jake Zimmerman
 - Jakob Voß
 - James Aspnes
 - Jamie F. Olson
 - Jan Larres
 - Jan Schulz
+- Jan-Otto Kröpke
 - Jason Ronallo
 - Jeff Arnold
 - Jeff Runningen
 - Jens Getreu
 - Jens Petersen
+- Jeroen de Haas
 - Jesse Rosenthal
 - Joe Hermaszewski
 - Joe Hillenbrand
@@ -110,17 +136,26 @@
 - Jose Luis Duran
 - José de Mattos Neto
 - Josef Svenningsson
+- Joseph C. Sible
 - Julien Cretel
+- Juliette Fourcot
 - Juliusz Gonera
 - Justin Bogner
 - Jérémy Bobbio
+- Karl Pettersson
 - Keiichiro Shikano
 - Kelsey Hightower
 - Kolen Cheung
 - Konstantin Zudov
 - Kristof Bastiaensen
+- Krystof Beuermann
 - Herwig Stuetz
 - Lars-Dominik Braun
+- Laurent P. René de Cotret
+- Leif Metcalf
+- Leonard Rosenthol
+- Lila
+- Lucas Escot
 - Luke Plant
 - Marc Schreiber
 - Mark Szepieniec
@@ -130,6 +165,7 @@
 - Matej Kollar
 - Mathias Schenner
 - Mathias Walter
+- Mathieu Boespflug
 - Mathieu Duponchelle
 - Matthew Doty
 - Matthew Eddey
@@ -141,8 +177,12 @@
 - Merijn Verstraaten
 - Michael Beaumont
 - Michael Chladek
+- Michael Hoffmann
+- Michael Peyton Jones
+- Michael Reed
 - Michael Snoyman
 - Michael Thompson
+- Mike Tzou
 - MinRK
 - Morton Fox
 - Nathan Gass
@@ -153,16 +193,20 @@
 - Nikolay Yakimov
 - Nils Carlson
 - Nokome Bentley
+- Ole Martin Ruud
 - Oliver Matthews
 - Ophir Lifshitz
 - Or Neeman
 - OvidiusCicero
+- Owen McGrath
 - Pablo Rodríguez
 - Pascal Wagler
 - Paul Tilley
 - Paul Rivier
 - Paulo Tanimoto
+- Pete Ryland
 - Peter Wang
+- Philip Pesca
 - Philippe Ombredanne
 - Phillip Alday
 - Prayag Verma
@@ -173,6 +217,7 @@
 - Recai Oktaş
 - Roland Hieber
 - RyanGlScott
+- Salim B
 - Sascha Wilde
 - Scott Morrison
 - Sebastian Talmon
@@ -196,12 +241,18 @@
 - Tiziano Müller
 - Todd Sifleet
 - Tom Leese
+- Tristan de Cacqueray
+- Tristan Stenner
 - Uli Köhler
+- Urs Liska
 - Václav Zeman
+- Václav Haisman
+- Vaibhav Sagar
+- Vanessa McHale
+- Vasily Alferov
 - Viktor Kronvall
 - Vincent
-- Václav Haisman
-- Václav Zeman
+- Vlad Hanciuta
 - Wandmalfarbe
 - Waldir Pimenta
 - Wikiwide
@@ -210,19 +261,28 @@
 - Yan Pashkovsky
 - Yoan Blanc
 - Yuchen Pei
+- Zihang Chen
+- a-vrma
+- andrebauer
+- argent0
+- blmage
 - bucklereed
 - bumper314
 - chinapedia
 - csforste
+- dbecher-ito
 - d-dorazio
 - ebiim
-- iandol
+- favonia
 - infinity0x
+- jeongminkim-islab
 - kaizshang91
 - lux-lth
 - lwolfsonkin
 - nkalvi
+- niszet
 - oltolm
+- oquechy
 - quasicomputational
 - qerub
 - robabla
@@ -232,5 +292,7 @@
 - shreevatsa.public
 - takahashim
 - tgkokk
+- the-solipsist
 - thsutton
+- vijayphoenix
 - wiefling

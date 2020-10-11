@@ -1,7 +1,7 @@
 {-# LANGUAGE NoImplicitPrelude #-}
 {- |
    Module      : Tests.Readers.EPUB
-   Copyright   : © 2006-2019 John MacFarlane
+   Copyright   : © 2006-2020 John MacFarlane
    License     : GNU GPL, version 2 or above
 
    Maintainer  : John MacFarlane <jgm@berkeley.eu>
@@ -14,6 +14,7 @@ module Tests.Readers.EPUB (tests) where
 
 import Prelude
 import qualified Data.ByteString.Lazy as BL
+import qualified Data.Text as T
 import Test.Tasty
 import Test.Tasty.HUnit
 import qualified Text.Pandoc.Class as P
@@ -35,7 +36,9 @@ testMediaBag fp bag = do
              ++ show bag
              ++ "\nActual: "
              ++ show actBag)
-             (actBag == bag)
+             (actBag == packBag bag)
+  where
+    packBag = map $ \(x, y, z) -> (x, T.pack y, z)
 
 featuresBag :: [(String, String, Int)]
 featuresBag = [("img/check.gif","image/gif",1340)

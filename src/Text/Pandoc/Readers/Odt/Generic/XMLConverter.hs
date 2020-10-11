@@ -1,9 +1,7 @@
-{-# LANGUAGE NoImplicitPrelude #-}
-{-# LANGUAGE Arrows          #-}
 {-# LANGUAGE TupleSections   #-}
 {-# LANGUAGE GADTs           #-}
+{-# LANGUAGE LambdaCase      #-}
 {-# LANGUAGE PatternGuards   #-}
-{-# LANGUAGE RecordWildCards #-}
 {- |
    Module      : Text.Pandoc.Readers.Odt.Generic.XMLConverter
    Copyright   : Copyright (C) 2015 Martin Linnemann
@@ -38,8 +36,11 @@ module Text.Pandoc.Readers.Odt.Generic.XMLConverter
 , lookupAttr'
 , lookupDefaultingAttr
 , findAttr'
+, findAttrText'
 , findAttr
+, findAttrText
 , findAttrWithDefault
+, findAttrTextWithDefault
 , readAttr
 , readAttr'
 , readAttrWithDefault
@@ -52,13 +53,14 @@ module Text.Pandoc.Readers.Odt.Generic.XMLConverter
 , matchContent
 ) where
 
-import Prelude
 import           Control.Applicative  hiding ( liftA, liftA2 )
 import           Control.Monad               ( MonadPlus )
 import           Control.Arrow
 
+import           Data.Bool ( bool )
 import           Data.Either ( rights )
 import qualified Data.Map             as M
+import qualified Data.Text            as T
 import           Data.Default
 import           Data.Maybe
 
@@ -79,6 +81,7 @@ import           Text.Pandoc.Readers.Odt.Generic.Fallible
 type ElementName           = String
 type AttributeName         = String
 type AttributeValue        = String
+type TextAttributeValue    = T.Text
 
 --
 type NameSpacePrefix       = String
@@ -159,7 +162,7 @@ swapStack' state stack
 pushElement         :: XML.Element
                     -> XMLConverterState nsID extraState
                     -> XMLConverterState nsID extraState
-pushElement e state  = state { parentElements = e:(parentElements state) }
+pushElement e state  = state { parentElements = e:parentElements state }
 
 -- | Pop the top element from the call stack, unless it is the last one.
 popElement          :: XMLConverterState nsID extraState
@@ -384,7 +387,7 @@ filterChildrenName'        :: (NameSpaceID nsID)
 filterChildrenName' nsID f =     getCurrentElement
                              >>> arr XML.elChildren
                              >>> iterateS (keepingTheValue (elemNameMatches nsID f))
-                             >>> arr (catMaybes . fmap (uncurry $ bool Nothing . Just))
+                             >>> arr (map fst . filter snd)
 
 --------------------------------------------------------------------------------
 -- Attributes
@@ -466,11 +469,30 @@ findAttr' nsID attrName =         qualifyName nsID attrName
                               &&& getCurrentElement
                           >>% XML.findAttr
 
+-- | Return value as a (Maybe Text)
+findAttrText'           :: (NameSpaceID nsID)
+                        => nsID -> AttributeName
+                        -> XMLConverter nsID extraState x (Maybe TextAttributeValue)
+findAttrText' nsID attrName
+                        =         qualifyName nsID attrName
+                              &&& getCurrentElement
+                          >>% XML.findAttr
+                          >>^ fmap T.pack
+
 -- | Return value as string or fail
 findAttr               :: (NameSpaceID nsID)
                        => nsID -> AttributeName
                        -> FallibleXMLConverter nsID extraState x AttributeValue
 findAttr nsID attrName =     findAttr' nsID attrName
+                         >>> maybeToChoice
+
+-- | Return value as text or fail
+findAttrText           :: (NameSpaceID nsID)
+                       => nsID -> AttributeName
+                       -> FallibleXMLConverter nsID extraState x TextAttributeValue
+findAttrText nsID attrName
+                       = findAttr' nsID attrName
+                         >>^ fmap T.pack
                          >>> maybeToChoice
 
 -- | Return value as string or return provided default value
@@ -481,6 +503,15 @@ findAttrWithDefault    :: (NameSpaceID nsID)
 findAttrWithDefault nsID attrName deflt
                        = findAttr' nsID attrName
                          >>^ fromMaybe deflt
+
+-- | Return value as string or return provided default value
+findAttrTextWithDefault :: (NameSpaceID nsID)
+                        => nsID -> AttributeName
+                        -> TextAttributeValue
+                        -> XMLConverter nsID extraState x TextAttributeValue
+findAttrTextWithDefault nsID attrName deflt
+                       = findAttr' nsID attrName
+                         >>^ maybe deflt T.pack
 
 -- | Read and return value or fail
 readAttr               :: (NameSpaceID nsID, Read attrValue)
@@ -573,8 +604,8 @@ executeInSub nsID name a  =     keepingTheValue
                                   (findChild nsID name)
                             >>> ignoringState liftFailure
                             >>? switchingTheStack a
-  where liftFailure (_, (Left  f)) = Left  f
-        liftFailure (x, (Right e)) = Right (x, e)
+  where liftFailure (_, Left  f) = Left  f
+        liftFailure (x, Right e) = Right (x, e)
 
 --------------------------------------------------------------------------------
 -- Iterating over children
@@ -661,7 +692,7 @@ makeMatcherC nsID name c = (    second (    contentToElem
                             >>% recover)
                     &&&^ snd
         contentToElem :: FallibleXMLConverter nsID extraState XML.Content XML.Element
-        contentToElem = arr $ \e -> case e of
+        contentToElem = arr $ \case
                                      XML.Elem e' -> succeedWith e'
                                      _           -> failEmpty
 
@@ -670,7 +701,7 @@ prepareMatchersC      :: (NameSpaceID nsID)
                        => [(nsID, ElementName, FallibleXMLConverter nsID extraState x x)]
                        -> ContentMatchConverter nsID extraState x
 --prepareMatchersC      = foldSs . (map $ uncurry3  makeMatcherC)
-prepareMatchersC      = reverseComposition . (map $ uncurry3  makeMatcherC)
+prepareMatchersC      = reverseComposition . map (uncurry3  makeMatcherC)
 
 -- | Takes a list of element-data - converter groups and
 -- * Finds all content of the current element

@@ -3,7 +3,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {- |
    Module      : Tests.Readers.DokuWiki
-   Copyright   : © 2018-2019 Alexander Krotov
+   Copyright   : © 2018-2020 Alexander Krotov
    License     : GNU GPL, version 2 or above
 
    Maintainer  : Alexander Krotov
@@ -22,7 +22,6 @@ import Tests.Helpers
 import Text.Pandoc
 import Text.Pandoc.Arbitrary ()
 import Text.Pandoc.Builder
-import Text.Pandoc.Shared (underlineSpan)
 
 dokuwiki :: Text -> Pandoc
 dokuwiki = purely $ readDokuWiki def{ readerStandalone = True }
@@ -42,13 +41,16 @@ tests = [ testGroup "inlines"
             para (emph "italic")
           , "Underlined" =:
             "__underlined__" =?>
-            para (underlineSpan "underlined")
+            para (underline "underlined")
           , "Monospaced" =:
             "''monospaced''" =?>
             para (code "monospaced")
+          , "Monospaced with nowiki" =:
+            "''%%monospaced%%''" =?>
+            para (code "monospaced")
           , "Combined" =:
             "**__//''combine''//__**" =?>
-            para (strong $ underlineSpan $ emph $ code "combine")
+            para (strong $ underline $ emph $ code "combine")
           , "Nowiki" =:
             T.unlines [ "<nowiki>"
                       , "This is some text which contains addresses like this: http://www.splitbrain.org and **formatting**, but nothing is done with it."
@@ -293,27 +295,22 @@ tests = [ testGroup "inlines"
           T.unlines [ "| foo | bar |"
                     , "| bat | baz |"
                     ] =?>
-          table mempty [(AlignDefault, 0.0), (AlignDefault, 0.0)]
-                       []
-                       [[plain "foo", plain "bar"]
-                       ,[plain "bat", plain "baz"]]
+          simpleTable [] [[plain "foo", plain "bar"]
+                         ,[plain "bat", plain "baz"]]
         , "Table with header" =:
           T.unlines [ "^ foo ^ bar ^"
                     , "| bat | baz |"
                     ] =?>
-          table mempty [(AlignDefault, 0.0), (AlignDefault, 0.0)]
-                       [plain "foo", plain "bar"]
-                       [[plain "bat", plain "baz"]]
+          simpleTable [plain "foo", plain "bar"] [[plain "bat", plain "baz"]]
         , "Table with colspan" =:
           T.unlines [ "^ 0,0 ^ 0,1 ^ 0,2 ^"
                     , "| 1,0 | 1,1 ||"
                     , "| 2,0 | 2,1 | 2,2 |"
                     ] =?>
-          table mempty [(AlignDefault, 0.0), (AlignDefault, 0.0), (AlignDefault, 0.0)]
-                       [plain "0,0", plain "0,1", plain "0,2"]
-                       [[plain "1,0", plain "1,1", mempty]
-                       ,[plain "2,0", plain "2,1", plain "2,2"]
-                       ]
+          simpleTable [plain "0,0", plain "0,1", plain "0,2"]
+                      [[plain "1,0", plain "1,1", mempty]
+                      ,[plain "2,0", plain "2,1", plain "2,2"]
+                      ]
         , "Indented code block" =:
           T.unlines [ "foo"
                     , "  bar"

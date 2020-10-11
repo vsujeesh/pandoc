@@ -81,7 +81,11 @@
 \providecommand{\tightlist}{%
   \setlength{\itemsep}{0pt}\setlength{\parskip}{0pt}}
 \setcounter{secnumdepth}{-\maxdimen} % remove section numbering
+\ifluatex
+  \usepackage{selnolig}  % disable illegal ligatures
+\fi
 
+\author{}
 \date{}
 
 \begin{document}
@@ -94,9 +98,9 @@ return a single value:
 
 \begin{Shaded}
 \begin{Highlighting}[]
-\OtherTok{unsplit ::}\NormalTok{ (}\DataTypeTok{Arrow}\NormalTok{ a) }\OtherTok{=>}\NormalTok{ (b }\OtherTok{{-}>}\NormalTok{ c }\OtherTok{{-}>}\NormalTok{ d) }\OtherTok{{-}>}\NormalTok{ a (b, c) d}
+\OtherTok{unsplit ::}\NormalTok{ (}\DataTypeTok{Arrow}\NormalTok{ a) }\OtherTok{=\textgreater{}}\NormalTok{ (b }\OtherTok{{-}\textgreater{}}\NormalTok{ c }\OtherTok{{-}\textgreater{}}\NormalTok{ d) }\OtherTok{{-}\textgreater{}}\NormalTok{ a (b, c) d}
 \NormalTok{unsplit }\OtherTok{=}\NormalTok{ arr }\OperatorTok{.} \FunctionTok{uncurry}
-          \CommentTok{{-}{-} arr (\textbackslash{}op (x,y) {-}> x \textasciigrave{}op\textasciigrave{} y)}
+          \CommentTok{{-}{-} arr (\textbackslash{}op (x,y) {-}\textgreater{} x \textasciigrave{}op\textasciigrave{} y)}
 \end{Highlighting}
 \end{Shaded}
 

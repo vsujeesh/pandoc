@@ -1,7 +1,6 @@
-{-# LANGUAGE NoImplicitPrelude #-}
 {- |
    Module      : Text.Pandoc.Asciify
-   Copyright   : Copyright (C) 2013-2019 John MacFarlane
+   Copyright   : Copyright (C) 2013-2020 John MacFarlane
    License     : GNU GPL, version 2 or above
 
    Maintainer  : John MacFarlane <jgm@berkeley.edu>
@@ -13,7 +12,6 @@ ascii equivalents (used in constructing HTML identifiers).
 -}
 module Text.Pandoc.Asciify (toAsciiChar)
 where
-import Prelude
 import Data.Char (isAscii)
 import qualified Data.Map as M
 

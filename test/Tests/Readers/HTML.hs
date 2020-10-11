@@ -2,7 +2,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {- |
    Module      : Tests.Readers.HTML
-   Copyright   : © 2006-2019 John MacFarlane
+   Copyright   : © 2006-2020 John MacFarlane
    License     : GNU GPL, version 2 or above
 
    Maintainer  : John MacFarlane <jgm@berkeley.edu>
@@ -21,6 +21,8 @@ import Test.Tasty.QuickCheck
 import Test.Tasty.Options (IsOption(defaultValue))
 import Tests.Helpers
 import Text.Pandoc
+import Text.Pandoc.Writers.Shared (toLegacyTable)
+import Text.Pandoc.Shared (isHeaderBlock, onlySimpleTableCells)
 import Text.Pandoc.Arbitrary ()
 import Text.Pandoc.Builder
 import Text.Pandoc.Walk (walk)
@@ -35,6 +37,17 @@ makeRoundTrip :: Block -> Block
 makeRoundTrip CodeBlock{} = Para [Str "code block was here"]
 makeRoundTrip LineBlock{} = Para [Str "line block was here"]
 makeRoundTrip RawBlock{} = Para [Str "raw block was here"]
+makeRoundTrip (Div attr bs) = Div attr $ filter (not . isHeaderBlock) bs
+-- avoids round-trip failures related to makeSections
+-- e.g. with [Div ("loc",[],[("a","11"),("b_2","a b c")]) [Header 3 ("",[],[]) []]]
+makeRoundTrip b@(Table _attr blkCapt specs thead tbody tfoot) =
+  let (_capt, _aligns, widths, headers, rows') =
+        toLegacyTable blkCapt specs thead tbody tfoot
+      isSimple = onlySimpleTableCells (headers:rows')
+  in
+     if all (== 0.0) widths && not isSimple
+        then Para [Str "weird table omitted"]
+        else b
 makeRoundTrip x           = x
 
 removeRawInlines :: Inline -> Inline
@@ -89,6 +102,18 @@ tests = [ testGroup "base tag"
           , test htmlNativeDivs "<main> followed by text" $ "<main>main content</main>non-main content" =?>
             doc (divWith ("", [], [("role", "main")]) (plain (text "main content")) <> plain (text "non-main content"))
           ]
+        , testGroup "samp"
+          [
+            test html "inline samp block" $
+            "<samp>Answer is 42</samp>" =?>
+            plain (codeWith ("",["sample"],[]) "Answer is 42")
+          ]
+        , testGroup "var"
+        [
+          test html "inline var block" $
+          "<var>result</var>" =?>
+          plain (codeWith ("",["variable"],[]) "result")
+        ]
         , askOption $ \(QuickCheckTests numtests) ->
             testProperty "Round trip" $
               withMaxSuccess (if QuickCheckTests numtests == defaultValue

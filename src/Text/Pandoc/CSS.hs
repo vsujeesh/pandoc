@@ -1,7 +1,6 @@
-{-# LANGUAGE NoImplicitPrelude #-}
 {- |
 Module      : Text.Pandoc.CSS
-Copyright   : © 2006-2019 John MacFarlane <jgm@berkeley.edu>,
+Copyright   : © 2006-2020 John MacFarlane <jgm@berkeley.edu>,
                 2015-2016 Mauro Bieg,
                 2015      Ophir Lifshitz <hangfromthefloor@gmail.com>
 License     : GNU GPL, version 2 or above
@@ -18,18 +17,18 @@ module Text.Pandoc.CSS ( foldOrElse
                        )
 where
 
-import Prelude
+import qualified Data.Text as T
 import Text.Pandoc.Shared (trim)
 import Text.Parsec
-import Text.Parsec.String
+import Text.Parsec.Text
 
-ruleParser :: Parser (String, String)
+ruleParser :: Parser (T.Text, T.Text)
 ruleParser = do
     p <- many1 (noneOf ":")  <* char ':'
     v <- many1 (noneOf ":;") <* optional (char ';') <* spaces
-    return (trim p, trim v)
+    return (trim $ T.pack p, trim $ T.pack v)
 
-styleAttrParser :: Parser [(String, String)]
+styleAttrParser :: Parser [(T.Text, T.Text)]
 styleAttrParser = many1 ruleParser
 
 orElse :: Eq a => a -> a -> a -> a
@@ -44,7 +43,7 @@ eitherToMaybe _         = Nothing
 
 -- | takes a list of keys/properties and a CSS string and
 -- returns the corresponding key-value-pairs.
-pickStylesToKVs :: [String] -> String -> [(String, String)]
+pickStylesToKVs :: [T.Text] -> T.Text -> [(T.Text, T.Text)]
 pickStylesToKVs props styleAttr =
   case parse styleAttrParser "" styleAttr of
     Left _       -> []
@@ -52,7 +51,7 @@ pickStylesToKVs props styleAttr =
 
 -- | takes a list of key/property synonyms and a CSS string and maybe
 -- returns the value of the first match (in order of the supplied list)
-pickStyleAttrProps :: [String] -> String -> Maybe String
+pickStyleAttrProps :: [T.Text] -> T.Text -> Maybe T.Text
 pickStyleAttrProps lookupProps styleAttr = do
     styles <- eitherToMaybe $ parse styleAttrParser "" styleAttr
     foldOrElse Nothing $ map (`lookup` styles) lookupProps

@@ -21,7 +21,7 @@ local stringify = (require "pandoc.utils").stringify
 -- configure the writer.
 local meta = PANDOC_DOCUMENT.meta
 
--- Chose the image format based on the value of the
+-- Choose the image format based on the value of the
 -- `image_format` meta value.
 local image_format = meta.image_format
   and stringify(meta.image_format)
@@ -33,7 +33,7 @@ local image_mime_type = ({
     png = "image/png",
     svg = "image/svg+xml",
   })[image_format]
-  or error("unsupported image format `" .. img_format .. "`")
+  or error("unsupported image format `" .. image_format .. "`")
 
 -- Character escaping
 local function escape(s, in_attribute)
@@ -45,9 +45,9 @@ local function escape(s, in_attribute)
         return '&gt;'
       elseif x == '&' then
         return '&amp;'
-      elseif x == '"' then
+      elseif in_attribute and x == '"' then
         return '&quot;'
-      elseif x == "'" then
+      elseif in_attribute and x == "'" then
         return '&#39;'
       else
         return x
@@ -79,8 +79,7 @@ end
 -- body is a string, metadata is a table, variables is a table.
 -- This gives you a fragment.  You could use the metadata table to
 -- fill variables in a custom lua template.  Or, pass `--template=...`
--- to pandoc, and pandoc will add do the template processing as
--- usual.
+-- to pandoc, and pandoc will do the template processing as usual.
 function Doc(body, metadata, variables)
   local buffer = {}
   local function add(s)
@@ -142,8 +141,8 @@ function Strikeout(s)
   return '<del>' .. s .. '</del>'
 end
 
-function Link(s, src, tit, attr)
-  return "<a href='" .. escape(src,true) .. "' title='" ..
+function Link(s, tgt, tit, attr)
+  return "<a href='" .. escape(tgt,true) .. "' title='" ..
          escape(tit,true) .. "'>" .. s .. "</a>"
 end
 
@@ -272,7 +271,7 @@ end
 
 -- Convert pandoc alignment to something HTML can use.
 -- align is AlignLeft, AlignRight, AlignCenter, or AlignDefault.
-function html_align(align)
+local function html_align(align)
   if align == 'AlignLeft' then
     return 'left'
   elseif align == 'AlignRight' then
@@ -287,7 +286,7 @@ end
 function CaptionedImage(src, tit, caption, attr)
    return '<div class="figure">\n<img src="' .. escape(src,true) ..
       '" title="' .. escape(tit,true) .. '"/>\n' ..
-      '<p class="caption">' .. caption .. '</p>\n</div>'
+      '<p class="caption">' .. escape(caption) .. '</p>\n</div>'
 end
 
 -- Caption is a string, aligns is an array of strings,
@@ -358,4 +357,3 @@ meta.__index =
     return function() return "" end
   end
 setmetatable(_G, meta)
-

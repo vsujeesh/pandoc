@@ -1,8 +1,7 @@
-{-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE OverloadedStrings #-}
 {- |
    Module      : Text.Pandoc.Writers.Native
-   Copyright   : Copyright (C) 2006-2019 John MacFarlane
+   Copyright   : Copyright (C) 2006-2020 John MacFarlane
    License     : GNU GPL, version 2 or above
 
    Maintainer  : John MacFarlane <jgm@berkeley.edu>
@@ -13,10 +12,9 @@ Conversion of a 'Pandoc' document to a string representation.
 -}
 module Text.Pandoc.Writers.Native ( writeNative )
 where
-import Prelude
 import Data.List (intersperse)
 import Data.Text (Text)
-import Text.Pandoc.Class (PandocMonad)
+import Text.Pandoc.Class.PandocMonad (PandocMonad)
 import Text.Pandoc.Definition
 import Text.Pandoc.Options (WrapOption (..), WriterOptions (..))
 import Text.DocLayout
@@ -42,12 +40,42 @@ prettyBlock (DefinitionList items) = "DefinitionList" $$
   prettyList (map deflistitem items)
     where deflistitem (term, defs) = "(" <> text (show term) <> "," <> cr <>
            nest 1 (prettyList $ map (prettyList . map prettyBlock) defs) <> ")"
-prettyBlock (Table caption aligns widths header rows) =
-  "Table " <> text (show caption) <> " " <> text (show aligns) <> " " <>
-  text (show widths) $$
-  prettyRow header $$
-  prettyList (map prettyRow rows)
-    where prettyRow cols = prettyList (map (prettyList . map prettyBlock) cols)
+prettyBlock (Table attr blkCapt specs thead tbody tfoot) =
+  mconcat [ "Table "
+          , text (show attr)
+          , " "
+          , prettyCaption blkCapt ] $$
+  prettyList (map (text . show) specs) $$
+  prettyHead thead $$
+  prettyBodies tbody $$
+  prettyFoot tfoot
+  where prettyRows = prettyList . map prettyRow
+        prettyRow (Row a body) =
+          text ("Row " <> show a) $$ prettyList (map prettyCell body)
+        prettyCell (Cell a ma h w b) =
+          mconcat [ "Cell "
+                  , text (show a)
+                  , " "
+                  , text (show ma)
+                  , " ("
+                  , text (show h)
+                  , ") ("
+                  , text (show w)
+                  , ")" ] $$
+          prettyList (map prettyBlock b)
+        prettyCaption (Caption mshort body) =
+          "(Caption " <> text (showsPrec 11 mshort "") $$ prettyList (map prettyBlock body) <> ")"
+        prettyHead (TableHead thattr body)
+          = "(TableHead " <> text (show thattr) $$ prettyRows body <> ")"
+        prettyBody (TableBody tbattr rhc hd bd)
+          = mconcat [ "(TableBody "
+                    , text (show tbattr)
+                    , " ("
+                    , text (show rhc)
+                    , ")" ] $$ prettyRows hd $$ prettyRows bd <> ")"
+        prettyBodies = prettyList . map prettyBody
+        prettyFoot (TableFoot tfattr body)
+          = "(TableFoot " <> text (show tfattr) $$ prettyRows body <> ")"
 prettyBlock (Div attr blocks) =
   text ("Div " <> show attr) $$ prettyList (map prettyBlock blocks)
 prettyBlock block = text $ show block

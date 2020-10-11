@@ -1,7 +1,6 @@
-{-# LANGUAGE NoImplicitPrelude #-}
 {- |
    Module      : Text.Pandoc.Writers.Powerpoint
-   Copyright   : Copyright (C) 2017-2019 Jesse Rosenthal
+   Copyright   : Copyright (C) 2017-2020 Jesse Rosenthal
    License     : GNU GPL, version 2 or above
 
    Maintainer  : Jesse Rosenthal <jrosenthal@jhu.edu>
@@ -22,11 +21,10 @@ This is a wrapper around two modules:
 
 module Text.Pandoc.Writers.Powerpoint (writePowerpoint) where
 
-import Prelude
 import Codec.Archive.Zip
 import Text.Pandoc.Definition
 import Text.Pandoc.Walk
-import Text.Pandoc.Class (PandocMonad, report)
+import Text.Pandoc.Class.PandocMonad (PandocMonad, report)
 import Text.Pandoc.Options (WriterOptions)
 import Text.Pandoc.Writers.Shared (fixDisplayMath)
 import Text.Pandoc.Writers.Powerpoint.Presentation (documentToPresentation)

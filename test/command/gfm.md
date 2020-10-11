@@ -7,13 +7,30 @@ gfm tests:
 | apple | 0.13  |
 | orange|1.12|
 ^D
-[Table [] [AlignDefault,AlignRight] [0.0,0.0]
- [[Plain [Str "Fruit"]]
- ,[Plain [Str "Price"]]]
- [[[Plain [Str "apple"]]
-  ,[Plain [Str "0.13"]]]
- ,[[Plain [Str "orange"]]
-  ,[Plain [Str "1.12"]]]]]
+[Table ("",[],[]) (Caption Nothing
+ [])
+ [(AlignDefault,ColWidthDefault)
+ ,(AlignRight,ColWidthDefault)]
+ (TableHead ("",[],[])
+ [Row ("",[],[])
+  [Cell ("",[],[]) AlignDefault (RowSpan 1) (ColSpan 1)
+   [Plain [Str "Fruit"]]
+  ,Cell ("",[],[]) AlignDefault (RowSpan 1) (ColSpan 1)
+   [Plain [Str "Price"]]]])
+ [(TableBody ("",[],[]) (RowHeadColumns 0)
+  []
+  [Row ("",[],[])
+   [Cell ("",[],[]) AlignDefault (RowSpan 1) (ColSpan 1)
+    [Plain [Str "apple"]]
+   ,Cell ("",[],[]) AlignDefault (RowSpan 1) (ColSpan 1)
+    [Plain [Str "0.13"]]]
+  ,Row ("",[],[])
+   [Cell ("",[],[]) AlignDefault (RowSpan 1) (ColSpan 1)
+    [Plain [Str "orange"]]
+   ,Cell ("",[],[]) AlignDefault (RowSpan 1) (ColSpan 1)
+    [Plain [Str "1.12"]]]])]
+ (TableFoot ("",[],[])
+ [])]
 ```
 
 ```
@@ -52,21 +69,38 @@ My:thumbsup:emoji:heart:
 % pandoc -f gfm+smart -t native
 "hi"
 ^D
-[Para [Str "\8220hi\8221"]]
+[Para [Quoted DoubleQuote [Str "hi"]]]
 ```
 
 ```
 % pandoc -t gfm -f native
-[Table [Str "The",Space,Str "caption."] [AlignDefault,AlignRight] [0.0,0.0]
- [[Plain [Str "Fruit"]]
- ,[Plain [Str "Price"]]]
- [[[Plain [Str "apple"]]
-  ,[Plain [Str "0.13"]]]
- ,[[Plain [Str "orange"]]
-  ,[Plain [Str "1.12"]]]]]
+[Table ("",[],[]) (Caption Nothing
+ [Plain [Str "The",Space,Str "caption."]])
+ [(AlignDefault,ColWidthDefault)
+ ,(AlignRight,ColWidthDefault)]
+ (TableHead ("",[],[])
+ [Row ("",[],[])
+  [Cell ("",[],[]) AlignDefault (RowSpan 1) (ColSpan 1)
+   [Plain [Str "Fruit"]]
+  ,Cell ("",[],[]) AlignDefault (RowSpan 1) (ColSpan 1)
+   [Plain [Str "Price"]]]])
+ [(TableBody ("",[],[]) (RowHeadColumns 0)
+  []
+  [Row ("",[],[])
+   [Cell ("",[],[]) AlignDefault (RowSpan 1) (ColSpan 1)
+    [Plain [Str "apple"]]
+   ,Cell ("",[],[]) AlignDefault (RowSpan 1) (ColSpan 1)
+    [Plain [Str "0.13"]]]
+  ,Row ("",[],[])
+   [Cell ("",[],[]) AlignDefault (RowSpan 1) (ColSpan 1)
+    [Plain [Str "orange"]]
+   ,Cell ("",[],[]) AlignDefault (RowSpan 1) (ColSpan 1)
+    [Plain [Str "1.12"]]]])]
+ (TableFoot ("",[],[])
+ [])]
 ^D
 | Fruit  | Price |
-| ------ | ----: |
+|--------|------:|
 | apple  |  0.13 |
 | orange |  1.12 |
 
@@ -127,6 +161,6 @@ hi
 - [ ] foo
 - [x] bar
 ^D
-  - [ ] foo
-  - [x] bar
+-   [ ] foo
+-   [x] bar
 ```

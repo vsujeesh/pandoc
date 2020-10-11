@@ -11,7 +11,6 @@ import Text.Pandoc
 import Text.Pandoc.Arbitrary ()
 import Text.Pandoc.Builder
 import Text.Pandoc.Writers.RST
-import Text.Pandoc.Templates (compileTemplate)
 import qualified Data.Text as T
 
 infix 4 =:
@@ -25,7 +24,7 @@ testTemplate t = case runIdentity (compileTemplate [] (T.pack t)) of
     Left e -> error $ "Could not compile RST template: " ++ e
     Right templ -> test (purely (writeRST def{ writerTemplate = Just templ }) . toPandoc)
 
-bodyTemplate :: Template
+bodyTemplate :: Template T.Text
 bodyTemplate = case runIdentity (compileTemplate [] "$body$\n") of
                     Left e      -> error $
                       "Could not compile RST bodyTemplate" ++ e
@@ -106,6 +105,9 @@ tests = [ testGroup "rubrics"
           , "keeps quotes" =:
             strong (str "f" <> doubleQuoted (str "d") <> str "l") =?>
             "**f“d”l**"
+          , "backslash inserted between str and code" =:
+            str "/api?query=" <> code "foo" =?>
+            "/api?query=\\ ``foo``"
           ]
         , testGroup "headings"
           [ "normal heading" =:
@@ -173,6 +175,6 @@ tests = [ testGroup "rubrics"
               , "--------"]
           ]
         , testTemplate "$subtitle$\n" "subtitle" $
-          (setMeta "subtitle" ("subtitle" :: Inlines) $ doc $ plain "") =?>
+          setMeta "subtitle" ("subtitle" :: Inlines) (doc $ plain "") =?>
           ("subtitle" :: String)
         ]
